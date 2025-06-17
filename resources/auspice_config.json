@@ -1,0 +1,52 @@
+{
+  "title": "Enterovirus A71 - Nextclade dataset tree",
+  "build_url": "https://github.com/hodcroftlab/nextclade_a71",
+  "maintainers": [
+    {
+      "name": "Nadia Neuner-Jehle",
+      "url": "https://www.swisstph.ch/en/staff/profile/people/nadia-neuner-jehle"
+    },
+    {
+      "name": "Emma Hodcroft",
+      "url": "http://emmahodcroft.com/"
+    }
+  ],  "colorings": [
+    {
+      "title": "Clade",
+      "type": "categorical",
+      "key": "clade_membership"
+    },
+    {
+      "title": "Country",
+      "type": "categorical",
+      "key": "country"
+    },
+    {
+      "title": "Region",
+      "type": "categorical",
+      "key": "region"
+    }
+    ],
+  "geo_resolutions": [
+    "country", "region"
+  ],
+  "filters": [
+    "country",
+    "region",
+    "clade_membership"
+  ],
+  "display_defaults": {
+    "color_by": "clade_membership",
+    "geo_resolution": "country",
+    "tip_label": "strain",
+    "map_triplicate": true
+  },
+  "metadata_columns": [
+    "strain"
+  ],
+  "panels": [
+    "tree",
+    "map",
+    "entropy"
+  ]
+}

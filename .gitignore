@@ -1,0 +1,25 @@
+## add your work email
+.env
+
+# will be downloaded with ingest
+data/metadata.tsv
+data/sequences.fasta
+data
+
+# log files & cache
+.snakemake
+logs
+scripts/__pycache__/
+*.code-workspace
+benchmarks
+tmp
+
+# results
+results
+out-dataset
+dataset.zip
+test_out
+
+
+# docs
+nextclade_cli.md
