@@ -310,7 +310,7 @@ if STAR_ROOT == True:
     rule star_like_rooting:
         input:
             tree=rules.refine.output.tree,
-            clades="resources/clade_map.tsv"
+            clades="resources/clade_map.tsv" # TODO: the "clade map" has to be downloaded from auspice: "accession	clade" format
         output:
             tree="results/star_tree.nwk"
         params:

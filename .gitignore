@@ -23,3 +23,12 @@ test_out
 
 # docs
 nextclade_cli.md
+
+# resources (please create them yourself)
+resources/meta_public.tsv
+resources/clade_map.tsv
+resources/accession_strain.tsv
+
+# unused scripts
+scripts/rmdup.py
+scripts/clockor2_script.ipynb
