@@ -53,12 +53,15 @@ For more details on configuration, refer to the [Nextclade documentation](https:
 
 ---
 ### 4. Update the `Snakefile`
-- Modify lines 1-18 to adjust paths and parameters.
+- Modify lines 1-29 to adjust paths and parameters.
 - Ensure all necessary files for the Augur pipeline are present, including:
   - `sequences.fasta` & `metadata.tsv` 
     - can be downloaded from NCBI Virus via ingest: `FETCH_SEQUENCES==True`
   - [`auspice_config.json`](resources/auspice_config.json)
 - These files are essential for building the reference tree and running Nextclade.
+- Turning the parameter `STAR_ROOT=True` creates a star-like root after augur refine. This was developed for highly recombinant viruses. 
+    - For the first run, run it with `STAR_ROOT=False`.
+    - It needs the [clade_map](resources/clade_map.tsv) file: Download the auspice metadata (Download Data > METADATA (TSV)). Extract `accession` and `clade_membership` and save it as .tsv file with the headers ["accession","clade"].
 
 ---
 

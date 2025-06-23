@@ -24,17 +24,19 @@ CLADES =                "resources/clades.tsv"
 ACCESSION_STRAIN =      "resources/accession_strain.tsv"
 EXTRA_META =            "resources/meta_public.tsv"
 INCLUDE_EXAMPLES =      "resources/include_examples.txt"
-REFINE_DROP =          "resources/dropped_refine.txt"
+NEXTCLADE_EX_FASTA =    "results/example_sequences.fasta"
+REFINE_DROP =           "resources/dropped_refine.txt"
+COLORS =                "resources/colors.tsv"  # Optional, can be used to add colors to metadata
 
-FETCH_SEQUENCES = True
-STAR_ROOT = True
+FETCH_SEQUENCES = True # only true if access to internet
+STAR_ROOT = True # run first time after a while == False otherwise it will fail
 
 rule all:
     input:
         auspice = "results/auspice.json",
         augur_jsons = "test_out/",
         data = "dataset.zip",
-        seqs = "results/example_sequences.fasta",
+        seqs = NEXTCLADE_EX_FASTA,
 
 
 if FETCH_SEQUENCES == True:
@@ -260,7 +262,7 @@ rule exclude:
             --sequence-index {input.sequence_index} \
             --metadata {input.metadata} \
             --metadata-id-columns {params.strain_id_field} \
-            --exclude {input.exclude} {input.outliers}  \
+            --exclude {input.exclude} {input.outliers} {input.examples} \
             --output-sequences {output.filtered_sequences} \
             --output-metadata {output.filtered_metadata} \
             --output-strains {output.strains}
@@ -340,7 +342,10 @@ rule ancestral:
             --genes {params.genes} \
             --translations {params.translation_template} \
             --output-node-data {output.node_data} \
-            --output-translations {params.output_translation_template}
+            --output-translations {params.output_translation_template}\
+            --output-sequences results/ancestral_sequences{STAR_ROOT}.fasta
+        
+        head -n 2 results/ancestral_sequencesFalse.fasta > results/ref_node.fasta
         """
 
 rule clades:
@@ -366,6 +371,7 @@ rule export:
         branch_lengths = rules.refine.output.node_data,
         clades = rules.clades.output.json,
         auspice_config = AUSPICE_CONFIG,
+        colors = COLORS, 
     params:
         strain_id_field = ID_FIELD,
     output:
@@ -378,6 +384,7 @@ rule export:
             --metadata-id-columns {params.strain_id_field} \
             --auspice-config {input.auspice_config} \
             --node-data {input.mutations} {input.branch_lengths} {input.clades} \
+            --colors {input.colors} \
             --output {output.auspice}
         """
 
@@ -416,7 +423,7 @@ rule subsample_example_sequences:
         incl_examples = INCLUDE_EXAMPLES,
         clades =  rules.extract_clades_tsv.output.tsv,
     output:
-        example_sequences = "results/example_sequences.fasta",
+        example_sequences = NEXTCLADE_EX_FASTA,
     params:
         strain_id_field = ID_FIELD,
     shell:
@@ -446,7 +453,7 @@ rule subsample_example_sequences:
 rule assemble_dataset:
     input:
         tree = rules.export.output.auspice,
-        reference = REFERENCE_PATH,
+        reference = REFERENCE_PATH, #"results/ref_node.fasta"
         annotation = GFF_PATH,
         sequences = rules.subsample_example_sequences.output.example_sequences,
         pathogen = PATHOGEN_JSON,

@@ -1,7 +1,7 @@
-PP855530
-LC506516
-ON502276
-KP289419
-
-AY426531
-U22521
+PP855530 # high diversity
+ON502276 # high diversity
+KP289419 # high diversity
+LC506516 # Lab strain: A sequence (probably CVA16)
+U22521 # reference BrCr
+KX871578 #VP1 sequence
+JN835312 #mediocre; mixed sites
