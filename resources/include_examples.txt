@@ -1,7 +1,28 @@
-PP855530 # high diversity
 ON502276 # high diversity
 KP289419 # high diversity
 LC506516 # Lab strain: A sequence (probably CVA16)
-U22521 # reference BrCr
+#U22521 # reference BrCr
 KX871578 #VP1 sequence
 JN835312 #mediocre; mixed sites
+KJ686275 # good; C4
+
+# recombinant
+# LR798440
+
+# JN316089 #B5
+# DQ341364 #B5
+# HG421068 #F
+# LT719065 #F
+
+# # excluded in seed alignment
+# #PP855530
+# #OQ355740
+
+# #good sequences
+# PP585429
+# ON191510
+# LC627074
+
+# # vaccine strains
+# MK307344
+# HQ328793

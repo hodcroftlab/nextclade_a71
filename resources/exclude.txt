@@ -352,3 +352,8 @@ AB469183
 #unable to align
 HQ647170
 HQ647168
+
+# high diversity, bad alignment; intertypic recombinant?
+PP855530
+JQ708209
+OQ355781

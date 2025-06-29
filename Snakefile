@@ -64,7 +64,8 @@ rule add_reference_to_include:
         "results/include.txt",
     shell:
         """
-        echo "{REFERENCE_ACCESSION}" >> results/include.txt
+        cat {input} >> {output}
+        echo "{REFERENCE_ACCESSION}" >> {output}
         """
 
 rule curate:
@@ -422,8 +423,10 @@ rule subsample_example_sequences:
         outliers = rules.get_outliers.output.outliers,
         incl_examples = INCLUDE_EXAMPLES,
         clades =  rules.extract_clades_tsv.output.tsv,
+        tree_strains = rules.exclude.output.strains,
     output:
         example_sequences = NEXTCLADE_EX_FASTA,
+        strains = "results/example_strains.txt",
     params:
         strain_id_field = ID_FIELD,
     shell:
@@ -436,14 +439,16 @@ rule subsample_example_sequences:
             --sequences {input.all_sequences} \
             --metadata metadata.tmp \
             --metadata-id-columns {params.strain_id_field} \
-            --min-date 2000 --group-by year clade \
-            --subsample-max-sequences 25  \
+            --min-date 2010 --group-by clade \
+            --subsample-max-sequences 20  \
             --min-length 4000 \
             --include {input.incl_examples} \
             --exclude {input.exclude} {input.outliers} {input.refine} \
+            --exclude-where "clade=E" "clade=F" "clade=A" \
             --exclude-ambiguous-dates-by year \
             --probabilistic-sampling \
-            --output-sequences {output.example_sequences}
+            --output-sequences {output.example_sequences} \
+            --output-strains {output.strains}
         rm metadata.tmp
         """
         # seqkit grep -v -f {input.tree_strains} {input.all_sequences} \

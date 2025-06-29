@@ -23,7 +23,7 @@
     "minMatchLength": 50,
     "allowedMismatches": 8,
     "minLength": 100,
-    "minSeedCover": 0.5
+    "minSeedCover": 0.55
   },
   "defaultCds": "VP1",
   "compatibility": {

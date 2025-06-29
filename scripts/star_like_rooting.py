@@ -59,9 +59,9 @@ for group, strains in clade_to_strains.items():
     except:
         print(f"No MRCA found for group {group}", file=sys.stderr)
 
-
+# ipdb.set_trace()
 ## Plot the tree with colors
-# Build tip → group mapping
+## Build tip → group mapping
 # tip_colors = {}
 # group_to_color = {}
 # palette = plt.cm.tab10.colors

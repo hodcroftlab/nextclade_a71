@@ -34,11 +34,9 @@ B3	nuc	2768	T
 B3	nuc	3296	G
 B3	nuc	6968	G
 
-C	nuc	998	A
-C	nuc	1892	G
-C	nuc	2123	A
-C	nuc	2417	C
-C	VP2	200	A
+C	nuc	3845	A
+C	nuc	4868	G
+C	nuc	5555	C
 
 C2.r	nuc	2057	T
 C2.r	nuc	4706	C
@@ -61,17 +59,16 @@ C4	nuc	3014	A
 C4	nuc	3863	C
 C4	nuc	6173	T
 
-C1-like	nuc	5687	G
-C1-like	nuc	6353	G
+C1-like	nuc	974	G
+C1-like	nuc	6329	G
 
 C2-like	nuc	505	G
 C2-like	nuc	2855	C
 C2-like	nuc	6884	T
 
-C5	nuc	280	A
-C5	nuc	3399	T
-C5	nuc	4208	A
-C5	nuc	6833	C
+C5	nuc	711	A
+C5	nuc	3182	T
+C5	nuc	5675	A
 C5	nuc	7169	G
 
 F	VP1	167	E
