@@ -27,7 +27,7 @@ To set up and run the ingest workflow, follow these steps:
 2. **Run `generate_from_genbank.py` Script:**  
    Execute the script (located in `bin/`) to generate required reference files:
    ```bash
-   python3 bin/generate_from_genbank.py --reference "AY426531.1" --output-dir data/references/
+   python3 bin/generate_from_genbank.py --reference "<accession>" --output-dir data/references/
    ```
 
    During execution, you may be asked to provide CDS annotations. You can use the following codes to specify the CDS automatically:

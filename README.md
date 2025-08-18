@@ -63,7 +63,13 @@ For more details on configuration, refer to the [Nextclade documentation](https:
     - For the first run, run it with `STAR_ROOT=False`.
     - It needs the [clade_map](resources/clade_map.tsv) file: Download the auspice metadata (Download Data > METADATA (TSV)). Extract `accession` and `clade_membership` and save it as .tsv file with the headers ["accession","clade"].
 
----
+## Ingest
+The ingest process downloads sequences and metadata from NCBI Virus. For more details, refer to the [Ingest Documentation](ingest/README.md).
+
+The following **packages** must be installed to run the ingest process:
+```
+conda-forge/bioconda: csvtk, nextclade, tsv-utils, seqkit, zip, unzip, entrez-direct, ncbi-datasets-cli
+```
 
 ## Runnning the `Snakefile`
 To create the auspice JSON and a Nextclade example dataset:
