@@ -25,6 +25,11 @@
       "title": "Region",
       "type": "categorical",
       "key": "region"
+    },
+    {
+      "title": "Sampling date",
+      "type": "ordinal",
+      "key": "date"
     }
     ],
   "geo_resolutions": [
@@ -45,8 +50,6 @@
     "strain"
   ],
   "panels": [
-    "tree",
-    "map",
-    "entropy"
+    "tree"
   ]
 }

@@ -84,6 +84,7 @@ country	Vatican City	#FF4F4D
 country	Belarus	#A30000
 country	Bulgaria	#930000
 country	Czech Republic	#830000
+country	czechia	#830000
 country	Hungary	#730000
 country	Moldova	#630000
 country	Poland	#530000
@@ -203,3 +204,9 @@ country	Peru	#B1531E
 country	Suriname	#E38838
 country	Uruguay	#D77929
 country	Venezuela	#E48939
+
+region	africa	#5AA84A
+region	europe	#A21815
+region	north america	#F2A43B
+region	asia	#0E3A8A
+region	oceania	#469D8F

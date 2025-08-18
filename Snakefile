@@ -5,7 +5,7 @@ GENES =                 ["VP4", "VP2", "VP3", "VP1", "2A", "2B", "2C", "3A", "3B
 ALLOWED_DIVERGENCE =    "3000" # was 
 MIN_DATE =              "1960-01-01"
 MIN_LENGTH =            "6000" # was 6000 for whole genome build on Nextstrain
-MAX_SEQS =              "2000" # tree will be subsampled
+MAX_SEQS =              "1000" # tree will be subsampled
 ROOTING =               "AB575911 KF501389" #"mid_point" or alternative root using outgroup, e.g. the reference U22521
 ID_FIELD=               "accession" # either accession or strain, used for meta-id-column in augur
 
@@ -27,6 +27,7 @@ INCLUDE_EXAMPLES =      "resources/include_examples.txt"
 NEXTCLADE_EX_FASTA =    "results/example_sequences.fasta"
 REFINE_DROP =           "resources/dropped_refine.txt"
 COLORS =                "resources/colors.tsv"  # Optional, can be used to add colors to metadata
+COLORS_SCHEMES =        "resources/color_schemes.tsv"
 
 FETCH_SEQUENCES = True # only true if access to internet
 STAR_ROOT = True # run first time after a while == False otherwise it will fail
@@ -79,8 +80,9 @@ rule curate:
         public = EXTRA_META,
     params:
         strain_id_field = ID_FIELD,
-        date_format = ['%Y-%m-%d','%Y','XX-%m-%Y','%Y-%m-%dT%H:%M:%SZ','201X-XX-XX', 'XX-XX-%Y', 'XX-XX-XXXX','%m.%Y','%m-%Y', '%d.%m.%Y', "%b-%Y", "%d-%b-%Y"],  # Date format for metadata
-        date_fields = ["collection_date","date"]
+        date_format = ['%Y-%m-%d','%Y','XX-%m-%Y','%Y-%m-%dT%H:%M:%SZ','201X-XX-XX', 
+            'XX-XX-%Y', 'XX-XX-XXXX','%m.%Y','%m-%Y', '%d.%m.%Y', "%b-%Y", "%d-%b-%Y"],  # Date format for metadata
+        date_fields = ["date","date_released","date_updated"]
     output:
         metadata = "results/metadata.tsv",  # Final output file for publications metadata
     shell:
@@ -309,10 +311,13 @@ rule refine:
             --output-tree {output.tree}
         """
 
-if STAR_ROOT == True:
+if STAR_ROOT==True:
+    """
+    Rule to root the tree using a star-like rooting method.
+    """
     rule star_like_rooting:
         input:
-            tree=rules.refine.output.tree,
+            tree=ancient(rules.refine.output.tree),
             clades="resources/clade_map.tsv" # TODO: the "clade map" has to be downloaded from auspice: "accession	clade" format
         output:
             tree="results/star_tree.nwk"
@@ -324,7 +329,7 @@ if STAR_ROOT == True:
 
 rule ancestral:
     input:
-        tree = rules.star_like_rooting.output.tree if STAR_ROOT == True else rules.refine.output.tree,
+        tree = rules.star_like_rooting.output.tree if STAR_ROOT==True else rules.refine.output.tree,
         alignment=rules.exclude.output.filtered_sequences,
         annotation=GENBANK_PATH,
     output:
@@ -333,6 +338,7 @@ rule ancestral:
         translation_template=r"results/translations/cds_%GENE.translation.fasta",
         output_translation_template=r"results/translations/cds_%GENE.ancestral.fasta",
         genes=" ".join(GENES),
+        root = "results/ancestral_sequences_star.fasta" if "{STAR_ROOT}"==True else "results/ancestral_sequences.fasta",
     shell:
         """
         augur ancestral \
@@ -344,9 +350,10 @@ rule ancestral:
             --translations {params.translation_template} \
             --output-node-data {output.node_data} \
             --output-translations {params.output_translation_template}\
-            --output-sequences results/ancestral_sequences{STAR_ROOT}.fasta
+            --output-sequences {params.root} \
+            --skip-validation
         
-        head -n 2 results/ancestral_sequencesFalse.fasta > results/ref_node.fasta
+        head -n 2 {params.root} > results/ref_node.fasta
         """
 
 rule clades:
@@ -364,6 +371,56 @@ rule clades:
             --output-node-data {output.json}
         """
 
+rule get_dates:
+    """Create ordering for color assignment"""
+    input:
+        metadata = rules.exclude.output.filtered_metadata
+    output:
+        ordering = "results/color_ordering.tsv"
+    run:
+        import pandas as pd
+        column = "date"
+        meta = pd.read_csv(input.metadata, delimiter='\t')
+
+        if column not in meta.columns:
+            print(f"The column '{column}' does not exist in the file.")
+            sys.exit(1)
+
+        deflist = meta[column].dropna().tolist()
+        # Store unique values (ordered)
+        deflist = sorted(set(deflist))
+        if "XXXX-XX-XX" in deflist:
+            deflist.remove("XXXX-XX-XX")
+
+        result_df = pd.DataFrame({
+            'column': ['date'] * len(deflist),
+            'value': deflist
+        })
+
+        result_df.to_csv(output.ordering, sep='\t', index=False, header=False)
+        
+
+rule colors:
+    """Assign colors based on ordering"""
+    input:
+        ordering=rules.get_dates.output.ordering,
+        color_schemes=COLORS_SCHEMES,
+        colors=COLORS,
+    output:
+        colors="results/colors_dates.tsv",
+        final_colors="results/final_colors.tsv"
+    shell:
+        """
+        python3 scripts/assign-colors.py \
+            --ordering {input.ordering} \
+            --color-schemes {input.color_schemes} \
+            --output {output.colors}
+
+        echo -e '\ndate\tXXXX-XX-XX\t#a6acaf' >> {output.colors}
+
+        cat {output.colors} {input.colors} >> {output.final_colors}
+        """
+
 rule export:
     input:
         tree = rules.star_like_rooting.output.tree if STAR_ROOT == True else rules.refine.output.tree,
@@ -372,9 +429,10 @@ rule export:
         branch_lengths = rules.refine.output.node_data,
         clades = rules.clades.output.json,
         auspice_config = AUSPICE_CONFIG,
-        colors = COLORS, 
+        colors = rules.colors.output.final_colors
     params:
         strain_id_field = ID_FIELD,
+        fields="region country date",
     output:
         auspice = "results/auspice.json",
     shell:
@@ -385,6 +443,7 @@ rule export:
             --metadata-id-columns {params.strain_id_field} \
             --auspice-config {input.auspice_config} \
             --node-data {input.mutations} {input.branch_lengths} {input.clades} \
+            --color-by-metadata {params.fields} \
             --colors {input.colors} \
             --output {output.auspice}
         """
@@ -440,7 +499,7 @@ rule subsample_example_sequences:
             --metadata metadata.tmp \
             --metadata-id-columns {params.strain_id_field} \
             --min-date 2010 --group-by clade \
-            --subsample-max-sequences 20  \
+            --subsample-max-sequences 30  \
             --min-length 4000 \
             --include {input.incl_examples} \
             --exclude {input.exclude} {input.outliers} {input.refine} \
@@ -503,10 +562,6 @@ rule test:
 rule clean:
     shell:
         """
-        rm ingest/data/*
-        rm data/*
-        rm -r results
-        rm -r out-dataset/
-        rm -r test_out/
-        rm -r dataset.zip
+        rm -r results out-dataset test_out dataset.zip tmp
+        rm ingest/data/* data/*
         """
