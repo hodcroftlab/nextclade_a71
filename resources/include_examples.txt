@@ -1,4 +1,3 @@
-ON502276 # high diversity
 KP289419 # high diversity
 LC506516 # Lab strain: A sequence (probably CVA16)
 #U22521 # reference BrCr
