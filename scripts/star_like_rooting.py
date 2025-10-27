@@ -281,7 +281,7 @@ def main():
         # Create star tree
         star_tree = assigner.create_star_tree(root_name=args.root_name)
 
-        Phylo.draw(star_tree)
+        # Phylo.draw(star_tree)
         
         # Write output
         Phylo.write(star_tree, args.output_tree, "newick")
