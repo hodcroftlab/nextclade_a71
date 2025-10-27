@@ -60,8 +60,13 @@
     "stopCodons": {
       "enabled": true,
       "scoreWeight": 40
-    }
     },
+    "recombinants": {
+      "enabled": true,
+      "mutationsThreshold": 140,
+      "scoreWeight": 50
+    }
+  },
   "cdsOrderPreference":["VP4", "VP2", "VP3", "VP1", "2A", "2B", "2C", "3A", "3B", "3C", "3D"]
 
 }

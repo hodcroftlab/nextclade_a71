@@ -28,9 +28,44 @@ NEXTCLADE_EX_FASTA =    "results/example_sequences.fasta"
 REFINE_DROP =           "resources/dropped_refine.txt"
 COLORS =                "resources/colors.tsv"  # Optional, can be used to add colors to metadata
 COLORS_SCHEMES =        "resources/color_schemes.tsv"
+INFERRED_ANCESTOR =     "resources/inferred-root.fasta"
 
 FETCH_SEQUENCES = True # only true if access to internet
 STAR_ROOT = True # run first time after a while == False otherwise it will fail
+STATIC_ANCESTRAL_INFERRENCE = True
+configfile: "config.yaml"
+
+onstart:
+    if STATIC_ANCESTRAL_INFERRENCE and not config.get("static_inference_confirmed", False):
+        print(f"""
+        ╔══════════════════════════════════════════════════════════════╗
+        ║                 ENTEROVIRUS ROOT INFERENCE                   ║
+        ║                                                              ║
+        ║  This workflow will infer an ancestral root sequence for     ║
+        ║  your enterovirus dataset and overwrite:                     ║
+        ║  • results/metadata.tsv                                      ║
+        ║  • {SEQUENCES}                                      ║
+        ║                                                              ║
+        ║  To confirm, restart with:                                   ║
+        ║  snakemake -c 9 all --config static_inference_confirmed=true ║
+        ╚══════════════════════════════════════════════════════════════╝
+        """)
+        sys.exit("Root inference requires confirmation. See message above.")
+
+onsuccess:
+    if STATIC_ANCESTRAL_INFERRENCE:
+        print(f"""
+        Enterovirus root inference completed successfully!
+        Updated files:
+           • {INFERRED_ANCESTOR} (ancestral sequence)
+           • results/metadata.tsv (merged metadata)
+           • {SEQUENCES} (combined sequences with ancestral root)
+        """)
+    else: print("Workflow finished, no ancestral root created.")
+
+onerror:
+    print("An error occurred. See detailed error message in terminal.")
+
 
 rule all:
     input:
@@ -38,7 +73,7 @@ rule all:
         augur_jsons = "test_out/",
         data = "dataset.zip",
         seqs = NEXTCLADE_EX_FASTA,
-
+        **({"root": INFERRED_ANCESTOR} if STATIC_ANCESTRAL_INFERRENCE else {})
 
 if FETCH_SEQUENCES == True:
     rule fetch:
@@ -53,21 +88,6 @@ if FETCH_SEQUENCES == True:
             snakemake --cores 9 all
             cd ../
             """
-
-
-rule add_reference_to_include:
-    """
-    Create an include file for augur filter
-    """
-    input:
-        "resources/include.txt",
-    output:
-        "results/include.txt",
-    shell:
-        """
-        cat {input} >> {output}
-        echo "{REFERENCE_ACCESSION}" >> {output}
-        """
 
 rule curate:
     message:
@@ -109,6 +129,48 @@ rule curate:
         rm metadata*.tmp
         """
 
+if STATIC_ANCESTRAL_INFERRENCE == True:
+    rule static_inferrence:
+        message:
+            """
+            Running "inferred-root" snakefile for inference of the ancestral root. 
+            This reference will be included in the Nextclade reference tree.
+            WARNING: This will overwrite your sequence & meta file!
+            """
+        input:
+            dir = "inferred-root",
+            dataset_path = "dataset",
+            meta = rules.curate.output.metadata,
+            seq = SEQUENCES,
+            meta_ancestral = "resources/static_inferred_metadata.tsv", #TODO: create dummy metadata for ancestral sequence
+        params:
+            strain_id_field = ID_FIELD,
+        output:
+            inref = INFERRED_ANCESTOR,
+            seq = "results/sequences_with_ancestral.fasta",
+            meta = "results/metadata_with_ancestral.tsv",
+        shell:
+            """
+            # Run the inferred-root snakefile
+            echo "Running inferred-root workflow..."
+            cd {input.dir} 
+            snakemake --cores 9 all
+            cd ../
+
+            # Combine sequences (fixed the typo)
+            echo "Combining sequences with ancestral root..."
+            cat {input.seq} {output.inref} > {output.seq}
+
+            # Merge metadata
+            echo "Merging metadata..."
+            augur merge \
+                --metadata metadata={input.meta} ancestral={input.meta_ancestral} \
+                --metadata-id-columns {params.strain_id_field} \
+                --output-metadata {output.meta}
+            
+            echo "Static ancestral inference completed successfully!"
+            """
+
 
 rule index_sequences:
     message:
@@ -116,7 +178,7 @@ rule index_sequences:
         Creating an index of sequence composition for filtering
         """
     input:
-        sequences = SEQUENCES,
+        sequences = "results/sequences_with_ancestral.fasta" if STATIC_ANCESTRAL_INFERRENCE else SEQUENCES,
     output:
         sequence_index = "results/sequence_index.tsv"
     shell:
@@ -126,15 +188,30 @@ rule index_sequences:
             --output {output.sequence_index}
         """
 
+
+rule add_reference_to_include:
+    """
+    Create an include file for augur filter
+    """
+    input:
+        "resources/include.txt",
+    output:
+        "results/include.txt",
+    shell:
+        """
+        cat {input} >> {output}
+        echo "# add_reference_to_include\n{REFERENCE_ACCESSION}\nancestral_sequence" >> {output}
+        """
+
 rule filter:
     """
     Exclude sequences from before {MIN_DATE} and subsample to {MAX_SEQS} sequences.
     Only take sequences longer than {MIN_LENGTH}
     """
     input:
-        sequences = SEQUENCES,
+        sequences = "results/sequences_with_ancestral.fasta" if STATIC_ANCESTRAL_INFERRENCE else SEQUENCES,
         sequence_index = rules.index_sequences.output.sequence_index,
-        metadata = rules.curate.output.metadata,
+        metadata = "results/metadata_with_ancestral.tsv" if STATIC_ANCESTRAL_INFERRENCE else rules.curate.output.metadata,
         include = rules.add_reference_to_include.output,
     output:
         filtered_sequences = "results/filtered_sequences_raw.fasta",
@@ -248,7 +325,7 @@ rule exclude:
     input:
         sequences = rules.align.output.alignment,
         sequence_index = rules.index_sequences.output.sequence_index,
-        metadata = rules.curate.output.metadata,
+        metadata = "results/metadata_with_ancestral.tsv" if STATIC_ANCESTRAL_INFERRENCE else rules.curate.output.metadata,
         exclude = EXCLUDE,
         outliers = rules.get_outliers.output.outliers,
         examples = INCLUDE_EXAMPLES,
@@ -318,13 +395,29 @@ if STAR_ROOT==True:
     rule star_like_rooting:
         input:
             tree=ancient(rules.refine.output.tree),
-            clades="resources/clade_map.tsv" # TODO: the "clade map" has to be downloaded from auspice: "accession	clade" format
+            clades="resources/clade_map.tsv", # TODO: the "clade_map" has to be downloaded from Nextstrain auspice metadata: 
+                                                # "accession\tclade" format - use a tree with all sequences if possible `df = df.loc[:,["accession", "clade_membership"]]`
+            recombinant_accessions="resources/recombinants.tsv"  # Format: "accession" (one per line, with header)
         output:
             tree="results/star_tree.nwk"
         params:
-            strain_id_field=ID_FIELD
-        script:
-            "scripts/star_like_rooting.py"
+            strain_id_field=ID_FIELD,
+            recombinant_clades = ["C2r", "C1-like","C2-like", "E", "F", "A"],
+            root_name="NODE_0000000"
+        log:
+            "logs/star_like_rooting.log"
+        shell:
+            """
+            python scripts/star_like_rooting.py \
+                --input_tree {input.tree} \
+                --input_clades {input.clades} \
+                --recombinant_accessions {input.recombinant_accessions} \
+                --output_tree {output.tree} \
+                --strain_id_field {params.strain_id_field} \
+                --recombinant_clades {params.recombinant_clades} \
+                --root_name {params.root_name} \
+                2>&1 | tee {log}
+            """
 
 
 rule ancestral:
@@ -362,14 +455,64 @@ rule clades:
         mutations = rules.ancestral.output.node_data,
         clades = CLADES
     output:
-        json = "results/clades.json",
+        "results/clades.json",
     shell:
         """
         augur clades --tree {input.tree} \
             --mutations {input.mutations} \
             --clades {input.clades} \
-            --output-node-data {output.json}
+            --output-node-data {output}
         """
+
+rule recombinant_clades:
+    """
+    Mark accessions listed in resources/recombinants.tsv as 'recombinant' in the
+    augur clades JSON produced by the clades rule. Writes a new clades JSON
+    for downstream export.
+    """
+    input:
+        clades=rules.clades.output,
+        recombinants="resources/recombinants.tsv",  # one-column TSV or header+column
+    output:
+        node_data="results/clades_recombinant.json",
+    run:
+        import json
+        import pandas as pd
+        import os
+
+        # load recombinants (assume first column is accession)
+        df = pd.read_csv(input.recombinants, sep="\t", dtype=str, header=0)
+        recomb = set(df["accession"].to_list())
+
+        with open(input.clades[0], "r") as fh:
+            clades = json.load(fh)
+
+        if not recomb:
+            print("No recombinants loaded; writing input clades file unchanged.")
+            with open(output.node_data, "w") as fh:
+                json.dump(clades, fh, indent=2)
+            return
+
+        # clades JSON is expected to have structure {"nodes": {node_name: {...}, ...}, ...}
+        nodes = clades.get("nodes", {})
+        changed = 0
+        missing = []
+        for acc in sorted(recomb):
+            if acc in nodes:
+                node = nodes[acc]
+                node["clade_membership"] = "recombinant"
+                node.pop("clade_annotation", None)
+                changed += 1
+            else:
+                missing.append(acc)
+
+        print(f"Marked {changed} nodes as recombinant (from {len(recomb)} accessions provided).")
+        if missing:
+            print(f"{len(missing)} accessions not found in clades JSON; first few: {missing[:10]}")
+
+        with open(output.node_data, "w") as fh:
+            json.dump(clades, fh, indent=2)
+
 
 rule get_dates:
     """Create ordering for color assignment"""
@@ -427,9 +570,10 @@ rule export:
         metadata = rules.exclude.output.filtered_metadata,
         mutations = rules.ancestral.output.node_data,
         branch_lengths = rules.refine.output.node_data,
-        clades = rules.clades.output.json,
+        clades = rules.recombinant_clades.output.node_data,
         auspice_config = AUSPICE_CONFIG,
-        colors = rules.colors.output.final_colors
+        colors = rules.colors.output.final_colors,
+        lat_long = "resources/lat_longs.tsv"  # Optional, can be used to add lat/long to metadata
     params:
         strain_id_field = ID_FIELD,
         fields="region country date",
@@ -442,6 +586,7 @@ rule export:
             --metadata {input.metadata} \
             --metadata-id-columns {params.strain_id_field} \
             --auspice-config {input.auspice_config} \
+            --lat-longs {input.lat_long} \
             --node-data {input.mutations} {input.branch_lengths} {input.clades} \
             --color-by-metadata {params.fields} \
             --colors {input.colors} \
@@ -451,14 +596,14 @@ rule export:
 
 rule extract_clades_tsv:
     input:
-        json=rules.clades.output.json,
+        json=rules.clades.output,
     output:
         tsv = "results/clades_metadata.tsv"
     run:
         import json
         import csv
 
-        with open(input.json) as f:
+        with open(input.json[0]) as f:
             data = json.load(f)
 
         nodes = data.get("nodes", {})
@@ -475,8 +620,8 @@ rule extract_clades_tsv:
 
 rule subsample_example_sequences:
     input:
-        all_sequences = SEQUENCES,
-        metadata = rules.curate.output.metadata,
+        all_sequences = "results/sequences_with_ancestral.fasta" if STATIC_ANCESTRAL_INFERRENCE else SEQUENCES,
+        metadata = "results/metadata_with_ancestral.tsv" if STATIC_ANCESTRAL_INFERRENCE else rules.curate.output.metadata,
         exclude = EXCLUDE,
         refine = REFINE_DROP,
         outliers = rules.get_outliers.output.outliers,
@@ -557,6 +702,24 @@ rule test:
             --input-dataset {input.dataset} \
             --output-all {output.output} \
             {input.sequences}
+        """
+
+rule mutLabels:
+    input: 
+        json = PATHOGEN_JSON,
+        tsv = "test_out/nextclade.tsv",
+    params:
+        "results/virus_properties.json"
+    output:
+        "out-dataset/pathogen.json"
+    shell:
+        """
+        python3 scripts/generate_virus_properties.py
+        jq --slurpfile v {params} \
+           '.mutLabels.nucMutLabelMap = $v[0].nucMutLabelMap |
+            .mutLabels.nucMutLabelMapReverse = $v[0].nucMutLabelMapReverse' \
+           {input.json} > {output}
+        zip -rj dataset.zip  out-dataset/*
         """
 
 rule clean:

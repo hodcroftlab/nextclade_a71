@@ -10,11 +10,60 @@
       "name": "Emma Hodcroft",
       "url": "http://emmahodcroft.com/"
     }
-  ],  "colorings": [
+  ],
+  "extensions": {
+    "nextclade": {
+      "ref_nodes": {
+        "default": "__root__",
+        "builtins": {
+          "__root__": {
+            "displayName": "Reference U22521.1",
+            "description": "BrCr strain, complete cds"
+          }
+        },
+        "search": [
+          {
+            "name": "InferredAncestor",
+            "displayName": "Static Inferred Ancestor",
+            "description": "Precomputed ancestral sequence (static)",
+            "criteria": [
+              {
+                "node": [
+                  {
+                    "name": ["ancestral_sequence"]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "Inferred root",
+            "displayName": "Tree root",
+            "description": "Inferred ancestral root (regenerated on each run)",
+            "criteria": [
+              {
+                "node": [
+                  {
+                    "name": ["NODE_0000000"]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "colorings": [
     {
       "title": "Clade",
       "type": "categorical",
       "key": "clade_membership"
+    },
+    {
+      "title": "Collection Date",
+      "type": "categorical",
+      "key": "date"
     },
     {
       "title": "Country",
@@ -22,14 +71,9 @@
       "key": "country"
     },
     {
-      "title": "Region",
+      "title": "Global Region",
       "type": "categorical",
       "key": "region"
-    },
-    {
-      "title": "Sampling date",
-      "type": "ordinal",
-      "key": "date"
     }
     ],
   "geo_resolutions": [
@@ -44,6 +88,7 @@
     "color_by": "clade_membership",
     "geo_resolution": "country",
     "tip_label": "strain",
+    "branch_label": "clade",
     "map_triplicate": true
   },
   "metadata_columns": [
