@@ -32,3 +32,4 @@ resources/accession_strain.tsv
 # unused scripts
 scripts/rmdup.py
 scripts/clockor2_script.ipynb
+config.yaml

@@ -4,7 +4,9 @@ import pandas as pd
 from collections import defaultdict
 import sys
 import logging
+import argparse
 from typing import Dict, List, Optional
+import ipdb
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -13,41 +15,58 @@ logger = logging.getLogger(__name__)
 class CladeGroupAssigner:
     """Class to handle clade group assignment and tree restructuring."""
     
-    def __init__(self, tree_file: str, clades_file: str, strain_id_field: str):
+    def __init__(self, tree_file: str, clades_file: str, strain_id_field: str, 
+                 recombinant_clades: Optional[List[str]] = None, 
+                 recombinants_file: Optional[str] = None):
         self.tree = Phylo.read(tree_file, "newick")
         self.df = pd.read_csv(clades_file, sep="\t")
         self.strain_id_field = strain_id_field
+        self.recombinant_clades = recombinant_clades or []
+        
+        # Load recombinant accessions
+        self.recombinant_accessions = set()
+        if recombinants_file:
+            try:
+                rec_df = pd.read_csv(recombinants_file, sep="\t")
+                accession_col = rec_df.columns[0]
+                self.recombinant_accessions = set(rec_df[accession_col].astype(str).str.strip())
+                # logger.info(f"Loaded {len(self.recombinant_accessions)} recombinant accessions")
+            except Exception as e:
+                logger.warning(f"Could not load recombinants file: {e}")
         
         # Cache terminal names for faster lookup
         self.terminal_names = {tip.name for tip in self.tree.get_terminals()}
-        logger.info(f"Loaded tree with {len(self.terminal_names)} terminals and clade mapping with {len(self.df)} entries")
+        # logger.info(f"Loaded tree with {len(self.terminal_names)} terminals and clade mapping with {len(self.df)} entries")
         
-    @staticmethod
-    def assign_group(clade: str) -> str:
+    def assign_group(self, clade: str, strain_id: str) -> str:
         """
         Assign custom groups based on clade names.
         
         Args:
             clade: The clade name to classify
+            strain_id: The strain ID to check against recombinant list
             
         Returns:
             The assigned group name
         """
+        # Check if in recombinant list first
+        if strain_id in self.recombinant_accessions:
+            return "recombinant"
+        
         if pd.isna(clade) or not isinstance(clade, str):
-            return "Unknown"
+            return "Unassigned"
             
         clade = clade.strip()
         
-        if clade.startswith("B"):
+        # Check if clade is recombinant
+        if clade in self.recombinant_clades:
+            return clade
+        elif clade.startswith("B"):
             return "B"
-        elif clade == "C2r":
-            return "C2r"
-        elif clade == "C1-like":
-            return "C1-like"
         elif clade.startswith("C"):
             return "C"
         else:
-            return "A/E/F"
+            return "recombinant"
     
     def get_clade_to_strains_mapping(self) -> Dict[str, List[str]]:
         """
@@ -56,8 +75,11 @@ class CladeGroupAssigner:
         Returns:
             Dictionary mapping group names to lists of strain IDs
         """
-        # Apply group assignment
-        self.df["group"] = self.df["clade"].apply(self.assign_group)
+        # Apply group assignment (modified to pass strain_id)
+        self.df["group"] = self.df.apply(
+            lambda row: self.assign_group(row["clade"], str(row[self.strain_id_field]).strip()),
+            axis=1
+        )
         
         # Group strains by assigned group
         clade_to_strains = defaultdict(list)
@@ -72,7 +94,7 @@ class CladeGroupAssigner:
         # Log group statistics
         for group, strains in clade_to_strains.items():
             valid_strains = [s for s in strains if s in self.terminal_names]
-            logger.info(f"Group '{group}': {len(strains)} strains, {len(valid_strains)} valid in tree")
+            # logger.info(f"Group '{group}': {len(strains)} strains, {len(valid_strains)} valid in tree")
             
         return dict(clade_to_strains)
     
@@ -99,6 +121,23 @@ class CladeGroupAssigner:
             logger.warning(f"Could not find MRCA for strains {strains[:5]}{'...' if len(strains) > 5 else ''}: {e}")
             return None
     
+    def distance_to_root(self, clade: Clade) -> float:
+        """
+        Compute sum of branch lengths from the current tree root to the given clade.
+        This is used to preserve original root-to-node distance when reattaching clades
+        to a new root.
+        """
+        try:
+            path = self.tree.get_path(clade)  # path is list of clades from root->...->clade (excluding root)
+        except Exception:
+            # if get_path fails, return 0
+            return 0.0
+        total = 0.0
+        for p in path:
+            if getattr(p, "branch_length", None):
+                total += float(p.branch_length)
+        return total
+
     def move_clade_safely(self, clade: Clade, new_parent: Clade, problematic_parents: list) -> bool:
         """
         Safely move a clade to a new parent.
@@ -107,18 +146,23 @@ class CladeGroupAssigner:
             clade: The clade to move
             new_parent: The new parent clade
             problematic_parents: A list of problematic parent node names to check and remove if they have no children.
-
             
         Returns:
             True if successful, False otherwise
         """
-
         try:
+            # compute original distance from root to this clade (before we remove it)
+            orig_dist = self.distance_to_root(clade)
+            # If orig_dist is zero or missing, keep whatever branch_length clade had
+            if orig_dist > 0.0:
+                # set branch_length on the clade so that when attached directly to new root
+                # the root->clade distance equals the original root->clade distance.
+                clade.branch_length = orig_dist
+
             # Find and remove from current parent
             for parent in self.tree.find_clades():
                 if clade in parent.clades:
                     parent.clades.remove(clade)
-                    # logger.info(f"Removed clade {clade} from parent {parent.name}")
                     
                     # Add to problematic_parents if not already present
                     if parent.name not in problematic_parents:
@@ -126,20 +170,17 @@ class CladeGroupAssigner:
 
                     # Check if the parent has no remaining children
                     if not parent.clades:
-                        # logger.warning(f"Parent {parent.name} has no children and will be removed.")
                         # Remove the parent from its grandparent
                         for grandparent in self.tree.find_clades():
                             if parent in grandparent.clades:
                                 grandparent.clades.remove(parent)
-                                # logger.info(f"Removed problematic parent {parent.name} from grandparent {grandparent.name}")
                                 break
                     break
 
             # Add the clade to the new parent
             new_parent.clades.append(clade)
-            # logger.info(f"Moved clade {clade.name} to new parent {new_parent.name}")
             return True
-
+    
         except Exception as e:
             logger.error(f"Error moving clade {clade.name}: {e}")
             return False
@@ -175,17 +216,17 @@ class CladeGroupAssigner:
                     
         return tree
 
-    def create_star_tree(self) -> Phylo.BaseTree.Tree:
+    def create_star_tree(self, root_name: str = "NODE_0000000") -> Phylo.BaseTree.Tree:
         """Create a star-like tree with major clades attached to root."""
         clade_to_strains = self.get_clade_to_strains_mapping()
-        
+
         # Create new root
-        new_root = Clade(name="NODE_0000000")  # Use standard node naming
+        new_root = Clade(name=root_name)
         new_tree = Phylo.BaseTree.Tree(root=new_root)
         
         successful_groups = 0
         total_strains_processed = 0
-        problematic_parents=[]
+        problematic_parents= []
         
         for group, strains in clade_to_strains.items():
             valid_strains = [strain for strain in strains if strain in self.terminal_names]
@@ -193,8 +234,6 @@ class CladeGroupAssigner:
             if not valid_strains:
                 logger.warning(f"No valid strains found for group '{group}'")
                 continue
-                
-            # logger.info(f"Processing group '{group}' with {len(valid_strains)} valid strains")
             
             mrca = self.find_mrca_safely(valid_strains)
             if mrca is None:
@@ -205,33 +244,48 @@ class CladeGroupAssigner:
             if not mrca.name or mrca.name.startswith("NODE_"):
                 mrca.name = f"{group}_root"
             
-            if self.move_clade_safely(mrca, new_root,problematic_parents):
+            if self.move_clade_safely(mrca, new_root, problematic_parents):
                 successful_groups += 1
                 total_strains_processed += len(valid_strains)
-                # logger.info(f"Successfully moved group '{group}'")
         
         # Clean the tree before returning
         cleaned_tree = self.clean_tree_for_augur(new_tree)
         
-        logger.info(f"Successfully processed {successful_groups}/{len(clade_to_strains)} groups")
+        # logger.info(f"Successfully processed {successful_groups}/{len(clade_to_strains)} groups")
         return cleaned_tree
 
     
 def main():
-    """Main execution function for Snakemake."""
+    """Main execution function with argument parsing."""
+    parser = argparse.ArgumentParser(description="Create star-like tree with recombinant handling")
+    parser.add_argument("--input_tree", required=True, help="Input tree file (Newick format)")
+    parser.add_argument("--input_clades", required=True, help="Input clades TSV file")
+    parser.add_argument("--recombinant_accessions", required=False, help="Recombinant accessions TSV file")
+    parser.add_argument("--output_tree", required=True, help="Output tree file (Newick format)")
+    parser.add_argument("--strain_id_field", required=True, help="Column name for strain IDs")
+    parser.add_argument("--recombinant_clades", nargs="*", default=[], help="List of recombinant clade names")
+    parser.add_argument("--root_name", default="NODE_0000000", help="Name for root node")
+    
+    args = parser.parse_args()
+    
     try:
-        # Use snakemake inputs directly
+        # Initialize assigner with arguments
         assigner = CladeGroupAssigner(
-            snakemake.input.tree,
-            snakemake.input.clades, 
-            snakemake.params.strain_id_field
+            tree_file=args.input_tree,
+            clades_file=args.input_clades,
+            strain_id_field=args.strain_id_field,
+            recombinant_clades=args.recombinant_clades,
+            recombinants_file=args.recombinant_accessions
         )
         
-        star_tree = assigner.create_star_tree()
+        # Create star tree
+        star_tree = assigner.create_star_tree(root_name=args.root_name)
+
+        Phylo.draw(star_tree)
         
         # Write output
-        Phylo.write(star_tree, snakemake.output.tree, "newick")
-        logger.info(f"Successfully wrote star tree to {snakemake.output.tree}")
+        Phylo.write(star_tree, args.output_tree, "newick")
+        logger.info(f"Successfully wrote star tree to {args.output_tree}")
         
     except Exception as e:
         logger.error(f"Script failed: {e}")
