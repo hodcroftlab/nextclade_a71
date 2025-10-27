@@ -1,0 +1,213 @@
+# Set the parameters
+REFERENCE_ACCESSION =   "U22521"
+GENES =                 ["VP4", "VP2", "VP3", "VP1", "2A", "2B", "2C", "3A", "3B", "3C", "3D"]
+MIN_DATE =              "1950-01-01"
+MIN_LENGTH =            "6000" # was 6000 for whole genome build on Nextstrain
+MAX_SEQS =              "1000" #TODO: set to 10000 for testing
+ROOTING =               "mid_point"  # alternative root using outgroup, e.g. the reference "AY426531.1"
+ID_FIELD=               "accession" # either accession or strain, used for meta-id-column in augur
+
+# Set the paths
+GFF_PATH =              "../dataset/genome_annotation.gff3"
+REFERENCE_PATH =        "../dataset/reference.fasta"
+
+GENBANK_PATH =          "../resources/reference.gbk"
+EXCLUDE =               "../resources/exclude.txt"
+
+SEQUENCES =             "../data/sequences.fasta"
+METADATA =              "../results/metadata.tsv"
+INCLUDE =               "../resources/include.txt"
+ANCESTRAL_ROOT =        "resources/inferred-root.fasta"
+
+
+rule all:
+    input:
+        seqs = ANCESTRAL_ROOT
+    shell:
+        """
+        cp {input.seqs} ../{input.seqs}
+        """
+
+rule index_sequences:
+    message:
+        """
+        Creating an index of sequence composition for filtering
+        """
+    input:
+        sequences = SEQUENCES,
+    output:
+        sequence_index = "results/sequence_index.tsv"
+    shell:
+        """
+        augur index \
+            --sequences {input.sequences} \
+            --output {output.sequence_index}
+        """
+
+rule filter:
+    """
+    Exclude sequences from before {MIN_DATE} and subsample to {MAX_SEQS} sequences.
+    Only take sequences longer than {MIN_LENGTH}
+    """
+    input:
+        sequences = SEQUENCES,
+        sequence_index = rules.index_sequences.output.sequence_index,
+        metadata = METADATA,
+        include = INCLUDE,
+        exclude = EXCLUDE,
+
+    output:
+        filtered_sequences = "results/filtered_sequences.fasta",
+        filtered_metadata = "results/filtered_metadata.tsv",
+        strains = "results/tree_strains.txt",
+
+    params: 
+        min_date="" if MIN_DATE == "" else "--min-date " + MIN_DATE,
+        min_length="" if MIN_LENGTH == "" else "--min-length " + MIN_LENGTH,
+        max_seqs=MAX_SEQS,
+        categories = "country year", #TODO: add subsampling per category?
+        strain_id_field = ID_FIELD,
+    shell:
+        """
+        augur filter \
+            --sequences {input.sequences} \
+            --sequence-index {input.sequence_index} \
+            --metadata {input.metadata} \
+            --metadata-id-columns {params.strain_id_field} \
+            {params.min_length} \
+            {params.min_date} \
+            --include {input.include} \
+            --exclude {input.exclude} \
+            --subsample-max-sequences {params.max_seqs} \
+            --output-sequences {output.filtered_sequences} \
+            --output-metadata {output.filtered_metadata} \
+            --output-strains {output.strains}
+
+        """
+
+rule align:
+    message:
+        """
+        Aligning sequences to {input.reference} using Nextclade3.
+        """
+    input:
+        sequences = rules.filter.output.filtered_sequences,
+        reference = REFERENCE_PATH,
+        annotation = GFF_PATH,
+    output:
+        alignment = "results/aligned.fasta",
+        tsv = "results/nextclade.tsv",
+    params:
+        translation_template = lambda w: "results/translations/cds_{cds}.translation.fasta",
+        penalty_gap_extend = 2, #make longer gaps more costly - default is 0
+        penalty_gap_open = 20,  #make gaps more expensive relative to mismatches - default is 13
+        penalty_gap_open_in_frame = 30, #make gaps more expensive relative to mismatches - default is 7
+        penalty_gap_open_out_of_frame = 23, #make out of frame gaps more expensive - default is 8 # prev was 19
+        kmer_length = 8, #reduce to find more matches - default is 10
+        kmer_distance = 25, #reduce to try more seeds - default is 50
+        min_match_length = 30, #reduce to keep more seeds - default is 40
+        allowed_mismatches = 15, #increase to keep more seeds - default is 8
+        min_length = 100, # min_length - default is 100
+        #cost of a mutation is 4
+    shell:
+        """
+        nextclade3 run \
+        -j {threads} \
+        {input.sequences} \
+        --input-ref {input.reference} \
+        --input-annotation {input.annotation} \
+        --penalty-gap-open {params.penalty_gap_open} \
+        --penalty-gap-extend {params.penalty_gap_extend} \
+        --penalty-gap-open-in-frame {params.penalty_gap_open_in_frame} \
+        --penalty-gap-open-out-of-frame {params.penalty_gap_open_out_of_frame} \
+        --kmer-length {params.kmer_length} \
+        --kmer-distance {params.kmer_distance} \
+        --min-match-length {params.min_match_length} \
+        --allowed-mismatches {params.allowed_mismatches} \
+        --min-length {params.min_length} \
+        --include-reference false \
+        --output-tsv {output.tsv} \
+        --output-translations {params.translation_template} \
+        --output-fasta {output.alignment} 
+        """        
+
+rule tree:
+    message:
+        """
+        Creating a maximum likelihood tree
+        """
+    input:
+        alignment = rules.align.output.alignment,
+    output:
+        tree = "results/tree_raw.nwk",
+    threads: 9
+    shell:
+        """
+        augur tree \
+            --alignment {input.alignment} \
+            --nthreads {threads}\
+            --output {output.tree} \
+        """
+
+
+rule refine:
+    input:
+        tree=rules.tree.output.tree,
+        alignment=rules.align.output.alignment,
+    output:
+        tree="results/tree.nwk",
+        node_data="results/branch_lengths.json",
+    shell:
+        """
+        augur refine \
+            --tree {input.tree} \
+            --alignment {input.alignment} \
+            --root {ROOTING} \
+            --keep-polytomies \
+            --divergence-unit mutations-per-site \
+            --output-node-data {output.node_data} \
+            --output-tree {output.tree}
+        """
+
+
+rule ancestral:
+    input:
+        tree = rules.refine.output.tree,
+        alignment = rules.align.output.alignment,
+        annotation = GENBANK_PATH,
+        reference = REFERENCE_PATH,
+    output:
+        node_data="results/muts.json",
+        ancestral_sequences="results/ancestral_sequences.fasta",
+        # root = ANCESTRAL_ROOT
+    params:
+        translation_template=r"results/translations/cds_%GENE.translation.fasta",
+        output_translation_template=r"results/translations/cds_%GENE.ancestral.fasta",
+        genes=" ".join(GENES),
+    shell:
+        """
+        augur ancestral \
+            --tree {input.tree} \
+            --alignment {input.alignment} \
+            --annotation {input.annotation} \
+            --root-sequence {input.annotation} \
+            --genes {params.genes} \
+            --translations {params.translation_template} \
+            --output-node-data {output.node_data} \
+            --output-translations {params.output_translation_template}\
+            --output-sequences {output.ancestral_sequences}
+        """
+
+rule extract_root:
+    input:
+        ancestral_sequences = rules.ancestral.output.ancestral_sequences,
+        reference = REFERENCE_PATH,
+    output:
+        root = ANCESTRAL_ROOT
+    shell:
+        """
+        python3 ../scripts/fix_root_gaps.py \
+            --ancestral {input.ancestral_sequences} \
+            --reference {input.reference} \
+            --output {output.root}
+        """
