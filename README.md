@@ -48,7 +48,7 @@ For more details on configuration, refer to the [Nextclade documentation](https:
 
 ---
 ### 3. Prepare `reference.gb`
-- Copy the `reference.gb` file into the `resources/` directory.
+- Copy the `reference.gbk` file into the `resources/` directory.
 - Modify protein names as needed to match your requirements.
 
 ---

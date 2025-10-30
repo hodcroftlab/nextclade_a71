@@ -12,10 +12,10 @@ ID_FIELD=               "accession" # either accession or strain, used for meta-
 # Set the paths
 GFF_PATH =              "dataset/genome_annotation.gff3"
 PATHOGEN_JSON =         "dataset/pathogen.json"
-GENBANK_PATH =          "resources/reference.gbk"
 REFERENCE_PATH =        "dataset/reference.fasta"
 README_PATH =           "dataset/README.md"
 CHANGELOG_PATH =        "dataset/CHANGELOG.md"
+GENBANK_PATH =          "resources/reference.gbk"
 AUSPICE_CONFIG =        "resources/auspice_config.json"
 EXCLUDE =               "resources/exclude.txt"
 SEQUENCES =             "data/sequences.fasta"
@@ -25,7 +25,6 @@ ACCESSION_STRAIN =      "resources/accession_strain.tsv"
 EXTRA_META =            "resources/meta_public.tsv"
 INCLUDE_EXAMPLES =      "resources/include_examples.txt"
 NEXTCLADE_EX_FASTA =    "results/example_sequences.fasta"
-REFINE_DROP =           "resources/dropped_refine.txt"
 COLORS =                "resources/colors.tsv"  # Optional, can be used to add colors to metadata
 COLORS_SCHEMES =        "resources/color_schemes.tsv"
 INFERRED_ANCESTOR =     "resources/inferred-root.fasta"
@@ -623,7 +622,6 @@ rule subsample_example_sequences:
         all_sequences = "results/sequences_with_ancestral.fasta" if STATIC_ANCESTRAL_INFERRENCE else SEQUENCES,
         metadata = "results/metadata_with_ancestral.tsv" if STATIC_ANCESTRAL_INFERRENCE else rules.curate.output.metadata,
         exclude = EXCLUDE,
-        refine = REFINE_DROP,
         outliers = rules.get_outliers.output.outliers,
         incl_examples = INCLUDE_EXAMPLES,
         clades =  rules.extract_clades_tsv.output.tsv,
@@ -647,7 +645,7 @@ rule subsample_example_sequences:
             --subsample-max-sequences 30  \
             --min-length 4000 \
             --include {input.incl_examples} \
-            --exclude {input.exclude} {input.outliers} {input.refine} \
+            --exclude {input.exclude} {input.outliers} \
             --exclude-where "clade=E" "clade=F" "clade=A" \
             --exclude-ambiguous-dates-by year \
             --probabilistic-sampling \
