@@ -204,31 +204,6 @@ country	Suriname	#E38838
 country	Uruguay	#D77929
 country	Venezuela	#E48939
 
-region	northern africa	#023618
-region	eastern africa	#058A3C
-region	central africa	#13F672
-region	western africa	#9DFBC4
-region	southern africa	#C8E6C9
-
-region	northern europe	#FD151B
-region	southern europe	#F53500
-region	eastern europe	#AC0006
-region	western europe	#FF5733
-
-region	caribbean	#FFB326
-region	central america	#C99739
-region	north america	#FEC601
-region	south america	#BF6109
-
-region	eastern asia	#1E88E5
-region	japan korea	#026AF2
-region	central asia	#0D47A1
-region	southern asia	#0A0074
-region	south-eastern asia	#8157C4
-region	western asia	#6C0D79
-
-region	oceania	#26A69A
-
 clade_membership	A	#511ea8
 clade_membership	B	#4236c1
 clade_membership	B1	#3f55ce
