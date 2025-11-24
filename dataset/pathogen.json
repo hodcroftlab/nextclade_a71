@@ -15,14 +15,16 @@
     "reference accession": "U22521.1"
   },
   "alignmentParams": {
-    "penaltyGapOpen": 15,
+    "penalityGapExtend":3,
+    "penaltyGapOpen": 16,
     "penaltyGapOpenInFrame": 20,
     "penaltyGapOpenOutOfFrame": 25,
-    "kmerLength": 10,
-    "kmerDistance": 50,
-    "minMatchLength": 50,
-    "allowedMismatches": 8,
-    "minLength": 69,
+    "kmerLength": 6,
+    "kmerDistance": 15,
+    "minMatchLength": 25,
+    "allowedMismatches": 10,
+    "minLength": 100,
+    "gapAlignmentSide": "right",
     "minSeedCover": 0.35
   },
   "defaultCds": "VP1",

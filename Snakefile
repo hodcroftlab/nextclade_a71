@@ -30,9 +30,10 @@ COLORS =                "resources/colors.tsv"
 COLORS_SCHEMES =        "resources/color_schemes.tsv"
 INFERRED_ANCESTOR =     "resources/inferred-root.fasta"
 
+STAR_ROOT = False                   # whether to use star-like rooting method
 FETCH_SEQUENCES = True              # whether to fetch sequences from NCBI Virus via ingest workflow
 STATIC_ANCESTRAL_INFERRENCE = True  # whether to use the static inferred ancestral sequence
-INFERRENCE_RERUN = False            # whether to rerun the inference of the ancestral sequence worfkflow (inferred-root)
+INFERRENCE_RERUN = False             # whether to rerun the inference of the ancestral sequence worfkflow (inferred-root)
 
 INFERRED_SEQ_PATH = "results/sequences_with_ancestral.fasta" if STATIC_ANCESTRAL_INFERRENCE else SEQUENCES
 INFERRED_META_PATH = "results/metadata_with_ancestral.tsv" if STATIC_ANCESTRAL_INFERRENCE else "results/metadata.tsv"
