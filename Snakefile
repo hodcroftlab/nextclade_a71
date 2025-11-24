@@ -6,41 +6,47 @@ ALLOWED_DIVERGENCE =    "3000" # was
 MIN_DATE =              "1960-01-01"
 MIN_LENGTH =            "6000" # was 6000 for whole genome build on Nextstrain
 MAX_SEQS =              "1000" # tree will be subsampled
-ROOTING =               "AB575911 KF501389" #"mid_point" or alternative root using outgroup, e.g. the reference U22521
+ROOTING =               "ancestral_sequence"  # mid_point, outgroup, reference, ancestral sequence
 ID_FIELD=               "accession" # either accession or strain, used for meta-id-column in augur
 
 # Set the paths
-GFF_PATH =              "dataset/genome_annotation.gff3"
+SEQUENCES =             "data/sequences.fasta"
+METADATA =              "data/metadata.tsv"
+
+GFF_PATH =              "dataset/genome_annotation.gff3" 
 PATHOGEN_JSON =         "dataset/pathogen.json"
-REFERENCE_PATH =        "dataset/reference.fasta"
 README_PATH =           "dataset/README.md"
 CHANGELOG_PATH =        "dataset/CHANGELOG.md"
+REFERENCE_PATH =        "dataset/reference.fasta"
+
 GENBANK_PATH =          "resources/reference.gbk"
 AUSPICE_CONFIG =        "resources/auspice_config.json"
 EXCLUDE =               "resources/exclude.txt"
-SEQUENCES =             "data/sequences.fasta"
-METADATA =              "data/metadata.tsv"
 CLADES =                "resources/clades.tsv"
 ACCESSION_STRAIN =      "resources/accession_strain.tsv"
 EXTRA_META =            "resources/meta_public.tsv"
 INCLUDE_EXAMPLES =      "resources/include_examples.txt"
-NEXTCLADE_EX_FASTA =    "results/example_sequences.fasta"
-COLORS =                "resources/colors.tsv"  # Optional, can be used to add colors to metadata
+COLORS =                "resources/colors.tsv"
 COLORS_SCHEMES =        "resources/color_schemes.tsv"
 INFERRED_ANCESTOR =     "resources/inferred-root.fasta"
 
-FETCH_SEQUENCES = True # only true if access to internet
-STAR_ROOT = True # run first time after a while == False otherwise it will fail
-STATIC_ANCESTRAL_INFERRENCE = True
-configfile: "config.yaml"
+FETCH_SEQUENCES = True              # whether to fetch sequences from NCBI Virus via ingest workflow
+STATIC_ANCESTRAL_INFERRENCE = True  # whether to use the static inferred ancestral sequence
+INFERRENCE_RERUN = False            # whether to rerun the inference of the ancestral sequence worfkflow (inferred-root)
+
+INFERRED_SEQ_PATH = "results/sequences_with_ancestral.fasta" if STATIC_ANCESTRAL_INFERRENCE else SEQUENCES
+INFERRED_META_PATH = "results/metadata_with_ancestral.tsv" if STATIC_ANCESTRAL_INFERRENCE else "results/metadata.tsv"
+
 include: "scripts/workflow_messages.snkm"
+configfile: PATHOGEN_JSON
 
 rule all:
     input:
         auspice = "results/auspice.json",
         augur_jsons = "test_out/",
         data = "dataset.zip",
-        seqs = NEXTCLADE_EX_FASTA,
+        seqs = "results/example_sequences.fasta",
+        json = "out-dataset/pathogen.json",
         **({"root": INFERRED_ANCESTOR} if STATIC_ANCESTRAL_INFERRENCE else {})
 
 if FETCH_SEQUENCES == True:
@@ -50,10 +56,11 @@ if FETCH_SEQUENCES == True:
         output:
             sequences=SEQUENCES,
             metadata=METADATA
+        threads: workflow.cores
         shell:
             """
             cd {input.dir} 
-            snakemake --cores 9 all
+            snakemake --cores {threads} all
             cd ../
             """
 
@@ -78,6 +85,7 @@ rule curate:
         augur merge --metadata metadata={input.meta} strains={input.strains}\
             --metadata-id-columns {params.strain_id_field} \
             --output-metadata metadata.tmp
+
         augur merge --metadata metadata=metadata.tmp public={input.public}\
             --metadata-id-columns {params.strain_id_field} \
             --output-metadata metadata2.tmp
@@ -97,66 +105,6 @@ rule curate:
         rm metadata*.tmp
         """
 
-if STATIC_ANCESTRAL_INFERRENCE == True:
-    rule static_inferrence:
-        message:
-            """
-            Running "inferred-root" snakefile for inference of the ancestral root. 
-            This reference will be included in the Nextclade reference tree.
-            WARNING: This will overwrite your sequence & meta file!
-            """
-        input:
-            dir = "inferred-root",
-            dataset_path = "dataset",
-            meta = rules.curate.output.metadata,
-            seq = SEQUENCES,
-            meta_ancestral = "resources/static_inferred_metadata.tsv", #TODO: create dummy metadata for ancestral sequence
-        params:
-            strain_id_field = ID_FIELD,
-        output:
-            inref = INFERRED_ANCESTOR,
-            seq = "results/sequences_with_ancestral.fasta",
-            meta = "results/metadata_with_ancestral.tsv",
-        shell:
-            """
-            # Run the inferred-root snakefile
-            echo "Running inferred-root workflow..."
-            cd {input.dir} 
-            snakemake --cores 9 all
-            cd ../
-
-            # Combine sequences (fixed the typo)
-            echo "Combining sequences with ancestral root..."
-            cat {input.seq} {output.inref} > {output.seq}
-
-            # Merge metadata
-            echo "Merging metadata..."
-            augur merge \
-                --metadata metadata={input.meta} ancestral={input.meta_ancestral} \
-                --metadata-id-columns {params.strain_id_field} \
-                --output-metadata {output.meta}
-            
-            echo "Static ancestral inference completed successfully!"
-            """
-
-
-rule index_sequences:
-    message:
-        """
-        Creating an index of sequence composition for filtering
-        """
-    input:
-        sequences = "results/sequences_with_ancestral.fasta" if STATIC_ANCESTRAL_INFERRENCE else SEQUENCES,
-    output:
-        sequence_index = "results/sequence_index.tsv"
-    shell:
-        """
-        augur index \
-            --sequences {input.sequences} \
-            --output {output.sequence_index}
-        """
-
-
 rule add_reference_to_include:
     """
     Create an include file for augur filter
@@ -168,7 +116,70 @@ rule add_reference_to_include:
     shell:
         """
         cat {input} >> {output}
-        echo "# add_reference_to_include\n{REFERENCE_ACCESSION}\nancestral_sequence" >> {output}
+        echo "{REFERENCE_ACCESSION}" >> {output}
+        echo ancestral_sequence >> {output}
+        """
+
+if STATIC_ANCESTRAL_INFERRENCE and INFERRENCE_RERUN:
+    rule static_inferrence:
+        message:
+            """
+            Running "inferred-root" snakefile for inference of the ancestral root. 
+            This reference will be included in the Nextclade reference tree.
+            WARNING: This will overwrite your {output.seq} & {output.meta} files!
+            """
+        input:
+            dir = "inferred-root",
+            dataset_path = "dataset",
+            meta = rules.curate.output.metadata,
+            seq = SEQUENCES,
+            meta_ancestral = "resources/static_inferred_metadata.tsv",
+            include = "results/include.txt"
+        params:
+            strain_id_field = ID_FIELD,
+        output:
+            inref = INFERRED_ANCESTOR,
+            seq = INFERRED_SEQ_PATH,
+            meta = INFERRED_META_PATH,
+        threads: workflow.cores
+        shell:
+            r"""
+            set -euo pipefail
+
+            echo "Cleaning previous results..."
+            rm -rf {input.dir}/results/* {input.dir}/resources/inferred-root.fasta
+
+            echo "Running inferred-root workflow..."
+            cd {input.dir}
+            snakemake --cores {threads} all_sub
+            cd - > /dev/null
+
+            echo "Combining sequences with ancestral root..."
+            cat {input.seq} {output.inref} > {output.seq}
+
+            echo "Merging metadata..."
+            augur merge \
+                --metadata metadata={input.meta} ancestral={input.meta_ancestral} \
+                --metadata-id-columns {params.strain_id_field} \
+                --output-metadata {output.meta}
+
+            echo "Static ancestral inference completed successfully!"
+            """
+
+rule index_sequences:
+    message:
+        """
+        Creating an index of sequence composition for filtering
+        """
+    input:
+        sequences = INFERRED_SEQ_PATH,
+    output:
+        sequence_index = "results/sequence_index.tsv"
+    shell:
+        """
+        augur index \
+            --sequences {input.sequences} \
+            --output {output.sequence_index}
         """
 
 rule filter:
@@ -177,9 +188,9 @@ rule filter:
     Only take sequences longer than {MIN_LENGTH}
     """
     input:
-        sequences = "results/sequences_with_ancestral.fasta" if STATIC_ANCESTRAL_INFERRENCE else SEQUENCES,
+        sequences = INFERRED_SEQ_PATH,
         sequence_index = rules.index_sequences.output.sequence_index,
-        metadata = "results/metadata_with_ancestral.tsv" if STATIC_ANCESTRAL_INFERRENCE else rules.curate.output.metadata,
+        metadata = INFERRED_META_PATH,
         include = rules.add_reference_to_include.output,
     output:
         filtered_sequences = "results/filtered_sequences_raw.fasta",
@@ -206,9 +217,6 @@ rule filter:
             --output-metadata {output.filtered_metadata}
         """
         
-
-
-
 rule align:
     message:
         """
@@ -223,17 +231,17 @@ rule align:
         tsv = "results/nextclade.tsv",
     params:
         translation_template = lambda w: "results/translations/cds_{cds}.translation.fasta",
-        #high-diversity 
-        penalty_gap_extend = 1, #make longer gaps more costly - default is 0
-        penalty_gap_open = 13,  #make gaps more expensive relative to mismatches - default is 13
-        penalty_gap_open_in_frame = 18, #make gaps more expensive relative to mismatches - default is 7
-        penalty_gap_open_out_of_frame = 23, #make out of frame gaps more expensive - default is 8 # prev was 19
-        kmer_length = 6, #reduce to find more matches - default is 10
-        kmer_distance = 25, #reduce to try more seeds - default is 50
-        min_match_length = 30, #reduce to keep more seeds - default is 40
-        allowed_mismatches = 15, #increase to keep more seeds - default is 8
-        min_length = 30, # min_length - default is 100
-        #cost of a mutation is 4
+        penalty_gap_extend = config["alignmentParams"]["penalityGapExtend"],
+        penalty_gap_open = config["alignmentParams"]["penaltyGapOpen"],
+        penalty_gap_open_in_frame = config["alignmentParams"]["penaltyGapOpenInFrame"],
+        penalty_gap_open_out_of_frame = config["alignmentParams"]["penaltyGapOpenOutOfFrame"],
+        kmer_length = config["alignmentParams"]["kmerLength"],
+        kmer_distance = config["alignmentParams"]["kmerDistance"],
+        min_match_length = config["alignmentParams"]["minMatchLength"],
+        allowed_mismatches = config["alignmentParams"]["allowedMismatches"],
+        min_length = config["alignmentParams"]["minLength"],
+        gap_alignment_side = config["alignmentParams"]["gapAlignmentSide"],  
+        min_seed_cover = config["alignmentParams"]["minSeedCover"],
     shell:
         """
         nextclade3 run \
@@ -241,21 +249,24 @@ rule align:
         {input.sequences} \
         --input-ref {input.reference} \
         --input-annotation {input.annotation} \
+        --alignment-preset high-diversity \
         --penalty-gap-open {params.penalty_gap_open} \
         --penalty-gap-extend {params.penalty_gap_extend} \
         --penalty-gap-open-in-frame {params.penalty_gap_open_in_frame} \
         --penalty-gap-open-out-of-frame {params.penalty_gap_open_out_of_frame} \
+        --gap-alignment-side {params.gap_alignment_side} \
         --kmer-length {params.kmer_length} \
         --kmer-distance {params.kmer_distance} \
         --min-match-length {params.min_match_length} \
         --allowed-mismatches {params.allowed_mismatches} \
+        --min-seed-cover {params.min_seed_cover} \
         --min-length {params.min_length} \
+        --max-alignment-attempts 5 \
         --include-reference false \
         --output-tsv {output.tsv} \
         --output-translations {params.translation_template} \
         --output-fasta {output.alignment} 
         """
-
 
 rule get_outliers:
     """
@@ -293,10 +304,10 @@ rule exclude:
     input:
         sequences = rules.align.output.alignment,
         sequence_index = rules.index_sequences.output.sequence_index,
-        metadata = "results/metadata_with_ancestral.tsv" if STATIC_ANCESTRAL_INFERRENCE else rules.curate.output.metadata,
+        metadata = INFERRED_META_PATH,
         exclude = EXCLUDE,
         outliers = rules.get_outliers.output.outliers,
-        examples = INCLUDE_EXAMPLES,
+        example = INCLUDE_EXAMPLES,
     params:
         strain_id_field = ID_FIELD,
     output:
@@ -310,13 +321,11 @@ rule exclude:
             --sequence-index {input.sequence_index} \
             --metadata {input.metadata} \
             --metadata-id-columns {params.strain_id_field} \
-            --exclude {input.exclude} {input.outliers} {input.examples} \
+            --exclude {input.exclude} {input.outliers} {input.example} \
             --output-sequences {output.filtered_sequences} \
             --output-metadata {output.filtered_metadata} \
             --output-strains {output.strains}
         """
-        #{input.examples}
-
 
 rule tree:
     message:
@@ -327,7 +336,7 @@ rule tree:
         alignment = rules.exclude.output.filtered_sequences,
     output:
         tree = "results/tree_raw.nwk",
-    threads: 9
+    threads: workflow.cores
     shell:
         """
         augur tree \
@@ -335,7 +344,6 @@ rule tree:
             --nthreads {threads}\
             --output {output.tree} \
         """
-
 
 rule refine:
     input:
@@ -390,11 +398,12 @@ if STAR_ROOT==True:
 
 rule ancestral:
     input:
-        tree = rules.star_like_rooting.output.tree if STAR_ROOT==True else rules.refine.output.tree,
+        tree=rules.refine.output.tree,
         alignment=rules.exclude.output.filtered_sequences,
         annotation=GENBANK_PATH,
     output:
         node_data="results/muts.json",
+        ancestral_sequences="results/ancestral_sequences.fasta",
     params:
         translation_template=r"results/translations/cds_%GENE.translation.fasta",
         output_translation_template=r"results/translations/cds_%GENE.ancestral.fasta",
@@ -411,11 +420,9 @@ rule ancestral:
             --translations {params.translation_template} \
             --output-node-data {output.node_data} \
             --output-translations {params.output_translation_template}\
-            --output-sequences {params.root} \
-            --skip-validation
-        
-        head -n 2 {params.root} > results/ref_node.fasta
+            --output-sequences {output.ancestral_sequences}
         """
+
 
 rule clades:
     input:
@@ -423,7 +430,7 @@ rule clades:
         mutations = rules.ancestral.output.node_data,
         clades = CLADES
     output:
-        "results/clades.json",
+        json = "results/clades.json",
     shell:
         """
         augur clades --tree {input.tree} \
@@ -510,6 +517,72 @@ rule get_dates:
 
         result_df.to_csv(output.ordering, sep='\t', index=False, header=False)
         
+rule epitopes:
+    input:
+        anc_seqs = rules.ancestral.output.node_data,
+        tree = rules.refine.output.tree,
+    output:
+        node_data = "results/epitopes.json"
+    params:
+        translation = "results/translations/cds_VP1.ancestral.fasta",
+        epitopes = {
+        'BC':     list(range(95, 107)),         # Huang et al., 2015; Foo et al., 2008; structural mapping of neutralizing antibodies
+        'DE':     list(range(142, 152)),        # Liu et al., 2011; Zaini et al., 2012.
+        'EF':     list(range(165, 173)),        # Lyu et al., 2014; Wang et al., 2010.
+        'CTERM':  list(range(281, 291)),        # Chang et al., 2012 (monoclonal antibody studies), structural models.
+        'GH':     list(range(209, 224)),        # mutations at S215, K218 have been noted to impact neutralization. Often used in vaccine design (e.g., in VLPs or epitope grafting studies).      
+        'Esc_CHN':[283, 293]},                  # Escape Mutations in C-Terminal in Chinese Samples
+        min_count = 6 # number of sequences?
+    run:
+        import json
+        from collections import defaultdict
+        from Bio import Phylo, SeqIO
+
+        manyXList = ["XXXXXXXXXXXX", "KEXXXXXXXXXX", "KERANXXXXXXX", "KERXXXXXXXXX", "KERAXXXXXXXX"]
+        valid_esc_chn = {"SA", "TA", "TX", "TS", "SS", "XX"}  # Set of valid values for Esc_CHN
+        # with open(input.anc_seqs) as fh:
+        #     anc = json.load(fh)["nodes"]
+
+        # Read translation files
+        vp1_anc = SeqIO.to_dict(SeqIO.parse(params.translation, "fasta"))
+
+        T = Phylo.read(input.tree, 'newick')
+        for node in T.find_clades(order='preorder'):
+            for child in node:
+                child.parent = node
+
+        nodes = {}
+        epitope_counts = {epi: defaultdict(int) for epi in params.epitopes}
+
+        for node in T.find_clades(order='preorder'):
+            n = node.name
+            aa = vp1_anc[n].seq
+            nodes[n] = {}
+            for epi,pos in params.epitopes.items():
+                pos = [p - 1 for p in pos]  # Convert to 0-based indexing
+                nodes[n][epi] = "".join([aa[p] for p in pos])
+                if epi == 'CTERM':
+                    if nodes[n]['CTERM'] in manyXList:
+                        nodes[n]['CTERM'] = "many x"
+                    elif 'X' in nodes[n]['CTERM']:
+                        nodes[n]['CTERM'] = nodes[node.parent.name]['CTERM']
+                if epi == 'Esc_CHN':
+                    if nodes[n]['Esc_CHN'] not in valid_esc_chn:
+                        nodes[n]['Esc_CHN'] = "other"
+                if not n.startswith('NODE_'):
+                    epitope_counts[epi][nodes[n][epi]] += 1
+
+        for node in nodes:
+            for epi,seq in nodes[node].items():
+                min_count2 = params.min_count if epi != "CTERM" else 6
+                if epi == "CTERM" and seq in manyXList:
+                    nodes[node][epi]='many X'
+                elif epitope_counts[epi][seq]<min_count2:#params.min_count:
+                    nodes[node][epi]='other'
+
+        with open(output.node_data, 'w') as fh:
+            json.dump({"epitopes": params.epitopes, "nodes":nodes}, fh)
+
 
 rule colors:
     """Assign colors based on ordering"""
@@ -532,16 +605,16 @@ rule colors:
         cat {output.colors} {input.colors} >> {output.final_colors}
         """
 
-rule export:
+rule export: 
     input:
-        tree = rules.star_like_rooting.output.tree if STAR_ROOT == True else rules.refine.output.tree,
+        tree = rules.refine.output.tree,
         metadata = rules.exclude.output.filtered_metadata,
         mutations = rules.ancestral.output.node_data,
         branch_lengths = rules.refine.output.node_data,
-        clades = rules.recombinant_clades.output.node_data,
+        clades = rules.clades.output.json, # dummy_clades if not set yet
         auspice_config = AUSPICE_CONFIG,
         colors = rules.colors.output.final_colors,
-        lat_long = "resources/lat_longs.tsv"  # Optional, can be used to add lat/long to metadata
+        epitopes = rules.epitopes.output.node_data,
     params:
         strain_id_field = ID_FIELD,
         fields="region country date",
@@ -561,17 +634,16 @@ rule export:
             --output {output.auspice}
         """
 
-
 rule extract_clades_tsv:
     input:
-        json=rules.clades.output,
+        json=rules.clades.output.json,
     output:
         tsv = "results/clades_metadata.tsv"
     run:
         import json
         import csv
 
-        with open(input.json[0]) as f:
+        with open(input.json) as f:
             data = json.load(f)
 
         nodes = data.get("nodes", {})
@@ -588,16 +660,15 @@ rule extract_clades_tsv:
 
 rule subsample_example_sequences:
     input:
-        all_sequences = "results/sequences_with_ancestral.fasta" if STATIC_ANCESTRAL_INFERRENCE else SEQUENCES,
-        metadata = "results/metadata_with_ancestral.tsv" if STATIC_ANCESTRAL_INFERRENCE else rules.curate.output.metadata,
+        all_sequences = INFERRED_SEQ_PATH,
+        metadata = INFERRED_META_PATH,
         exclude = EXCLUDE,
         outliers = rules.get_outliers.output.outliers,
         incl_examples = INCLUDE_EXAMPLES,
         clades =  rules.extract_clades_tsv.output.tsv,
-        tree_strains = rules.exclude.output.strains,
+        tree_strains = "results/tree_strains.txt",  # strains in the tree
     output:
-        example_sequences = NEXTCLADE_EX_FASTA,
-        strains = "results/example_strains.txt",
+        example_sequences = "results/example_sequences.fasta",
     params:
         strain_id_field = ID_FIELD,
     shell:
@@ -618,29 +689,28 @@ rule subsample_example_sequences:
             --exclude-where "clade=E" "clade=F" "clade=A" \
             --exclude-ambiguous-dates-by year \
             --probabilistic-sampling \
-            --output-sequences {output.example_sequences} \
-            --output-strains {output.strains}
+            --output-sequences {output.example_sequences}
         rm metadata.tmp
         """
         # seqkit grep -v -f {input.tree_strains} {input.all_sequences} \
         # | seqkit sample -n 100 -s 41 > {output.example_sequences}
 
-
 rule assemble_dataset:
     input:
         tree = rules.export.output.auspice,
-        reference = REFERENCE_PATH, #"results/ref_node.fasta"
+        reference = REFERENCE_PATH,
         annotation = GFF_PATH,
         sequences = rules.subsample_example_sequences.output.example_sequences,
         pathogen = PATHOGEN_JSON,
         readme = README_PATH,
         changelog = CHANGELOG_PATH,
+    params:
+        pathogen = "out-dataset/pathogen.json",
     output:
         tree = "out-dataset/tree.json",
         reference = "out-dataset/reference.fasta",
         annotation = "out-dataset/genome_annotation.gff3",
         sequences = "out-dataset/sequences.fasta",
-        pathogen = "out-dataset/pathogen.json",
         readme = "out-dataset/README.md",
         changelog = "out-dataset/CHANGELOG.md",
         dataset_zip = "dataset.zip",
@@ -650,7 +720,7 @@ rule assemble_dataset:
         cp {input.reference} {output.reference}
         cp {input.annotation} {output.annotation}
         cp {input.sequences} {output.sequences}
-        cp {input.pathogen} {output.pathogen}
+        cp {input.pathogen} {params.pathogen}
         cp {input.readme} {output.readme}
         cp {input.changelog} {output.changelog}
         zip -rj dataset.zip  out-dataset/*
@@ -672,26 +742,46 @@ rule test:
         """
 
 rule mutLabels:
-    input: 
+    input:
+        table = "results/nextclade.tsv",
+        clade = "results/clades_metadata.tsv",
         json = PATHOGEN_JSON,
-        tsv = "test_out/nextclade.tsv",
     params:
-        "results/virus_properties.json"
+        min_proportion = 0.2,
+        high_threshold_proportion = 0.70,
+        clades_high_threshold = ["A","B1","B2","B3","C1", "C2","C3","C4"],
+        clades_to_drop = ["unassigned"],
     output:
-        "out-dataset/pathogen.json"
+        clade_meta = "results/clades_mut_metadata.tsv",
+        properties = "results/virus_properties.json",
+        json = "out-dataset/pathogen.json"
     shell:
         """
-        python3 scripts/generate_virus_properties.py
-        jq --slurpfile v {params} \
+        augur merge \
+            --metadata meta={input.table} clade={input.clade} \
+            --metadata-id-columns meta=seqName clade=accession \
+            --output-metadata {output.clade_meta}
+
+        python3 scripts/generate_virus_properties.py \
+            --clade_meta {output.clade_meta} \
+            --properties {output.properties} \
+            --min-prop {params.min_proportion} \
+            --high-min-prop {params.high_threshold_proportion} \
+            --high-prop-clades "{params.clades_high_threshold}" \
+            --exclude-clades "{params.clades_to_drop}"
+
+
+        jq --slurpfile v {output.properties} \
            '.mutLabels.nucMutLabelMap = $v[0].nucMutLabelMap |
             .mutLabels.nucMutLabelMapReverse = $v[0].nucMutLabelMapReverse' \
-           {input.json} > {output}
+           {input.json} > {output.json}
+
         zip -rj dataset.zip  out-dataset/*
         """
 
 rule clean:
     shell:
         """
-        rm -r results out-dataset test_out dataset.zip tmp
         rm ingest/data/* data/*
+        rm -r results out-dataset test_out dataset.zip tmp
         """
