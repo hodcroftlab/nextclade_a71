@@ -33,7 +33,7 @@ INFERRED_ANCESTOR =     "resources/inferred-root.fasta"
 STAR_ROOT = False                   # whether to use star-like rooting method
 FETCH_SEQUENCES = True              # whether to fetch sequences from NCBI Virus via ingest workflow
 STATIC_ANCESTRAL_INFERRENCE = True  # whether to use the static inferred ancestral sequence
-INFERRENCE_RERUN = False             # whether to rerun the inference of the ancestral sequence worfkflow (inferred-root)
+INFERRENCE_RERUN = False            # whether to rerun the inference of the ancestral sequence worfkflow (inferred-root)
 
 INFERRED_SEQ_PATH = "results/sequences_with_ancestral.fasta" if STATIC_ANCESTRAL_INFERRENCE else SEQUENCES
 INFERRED_META_PATH = "results/metadata_with_ancestral.tsv" if STATIC_ANCESTRAL_INFERRENCE else "results/metadata.tsv"
@@ -49,6 +49,13 @@ rule all:
         seqs = "results/example_sequences.fasta",
         json = "out-dataset/pathogen.json",
         **({"root": INFERRED_ANCESTOR} if STATIC_ANCESTRAL_INFERRENCE else {})
+
+
+rule testing:
+    input:
+        "testing/EV-A71_fragments.fasta",
+        "testing/EV-A71_recombinants.fasta"
+
 
 if FETCH_SEQUENCES == True:
     rule fetch:
@@ -167,6 +174,32 @@ if STATIC_ANCESTRAL_INFERRENCE and INFERRENCE_RERUN:
             echo "Static ancestral inference completed successfully!"
             """
 
+if STATIC_ANCESTRAL_INFERRENCE and not INFERRENCE_RERUN:
+    rule add_ancestral:
+        input:
+            meta = rules.curate.output.metadata,
+            seq = SEQUENCES,
+            meta_ancestral = "resources/static_inferred_metadata.tsv",
+            inref = INFERRED_ANCESTOR,
+        output:
+            seq = INFERRED_SEQ_PATH,
+            meta = INFERRED_META_PATH,
+        params:
+            strain_id_field="accession",
+        shell:
+            """
+            echo "Combining sequences with ancestral root..."
+            cat {input.seq} {input.inref} > {output.seq}
+
+            echo "Merging metadata..."
+            augur merge \
+                --metadata metadata={input.meta} ancestral={input.meta_ancestral} \
+                --metadata-id-columns {params.strain_id_field} \
+                --output-metadata {output.meta}
+
+            echo "Static ancestral sequence imported successfully!"
+            """
+
 rule index_sequences:
     message:
         """
@@ -232,7 +265,7 @@ rule align:
         tsv = "results/nextclade.tsv",
     params:
         translation_template = lambda w: "results/translations/cds_{cds}.translation.fasta",
-        penalty_gap_extend = config["alignmentParams"]["penalityGapExtend"],
+        penalty_gap_extend = config["alignmentParams"]["penaltyGapExtend"],
         penalty_gap_open = config["alignmentParams"]["penaltyGapOpen"],
         penalty_gap_open_in_frame = config["alignmentParams"]["penaltyGapOpenInFrame"],
         penalty_gap_open_out_of_frame = config["alignmentParams"]["penaltyGapOpenOutOfFrame"],
@@ -616,6 +649,7 @@ rule export:
         auspice_config = AUSPICE_CONFIG,
         colors = rules.colors.output.final_colors,
         epitopes = rules.epitopes.output.node_data,
+        lat_long = "resources/lat_longs.tsv"
     params:
         strain_id_field = ID_FIELD,
         fields="region country date",
@@ -779,6 +813,118 @@ rule mutLabels:
 
         zip -rj dataset.zip  out-dataset/*
         """
+
+rule fragment_testing:
+    input:
+        nextstrain = "testing/nextstrain_a71_vp1.tsv",
+        sequences = "results/aligned.fasta",
+    output:
+        fragments = "testing/EV-A71_fragments.fasta"
+    params:
+        length = range(100, 3000, 100),  # lengths from 200 to 3000
+        gene = ["VP1", "3D"]  # genes to sample from; atm only VP1 and 3D supported
+    run:
+        import os
+        import random
+        from Bio import SeqIO
+        import pandas as pd
+
+        # Read all sequences from the input file
+        records = list(SeqIO.parse(input.sequences, "fasta"))
+        os.makedirs(os.path.dirname(output.fragments), exist_ok=True)
+
+        # filter records in nextstrain file
+        ns_ids = list(pd.read_csv(input.nextstrain).accession)
+        records = [r for r in records if r.id in ns_ids]
+
+        with open(output.fragments, "w") as out_handle:
+            for length in params.length:
+                record = random.choice(records)
+                seq_len = len(record.seq)
+                if "VP1" in params.gene or "3D" in params.gene:
+                    if "VP1" in params.gene: 
+                        seq1 = record.seq[2389:3315]
+                        l = len(seq1) - seq1.count("-") - seq1.count("N")
+                        if l > length:
+                            s = random.randint(0, l - length)
+                            seq1 = seq1[s:s+length]
+                            header = f"{record.id}_partial_{length}_VP1"
+                            out_handle.write(f">{header}\n{seq1}\n")
+                    if "3D" in params.gene:
+                        seq2 = record.seq[5926:7296]
+                        l = len(seq2)
+                        if l > length:
+                            s = random.randint(0, l - length)
+                            seq2 = seq2[s:s+length]
+                            header = f"{record.id}_partial_{length}_3D"
+                            out_handle.write(f">{header}\n{seq2}\n")
+                else: 
+                    print(f"Gene {params.gene} not recognized.")
+                        
+                while seq_len < length:
+                    record = random.choice(records)
+                    seq_len = len(record.seq)
+                start = random.randint(0, seq_len - length)
+                fragment_seq = record.seq[start:start+length]
+                header = f"{record.id}_partial_{length}"
+                out_handle.write(f">{header}\n{fragment_seq}\n")
+
+
+rule recombinant_testing:
+    input:
+        sequences = SEQUENCES,
+        nextstrain = "testing/nextstrain_a71_vp1.tsv",
+        clades = "results/clades_metadata.tsv",
+        evD_seq = "testing/EV-D_sequence.fasta"
+    output:
+        recombinants = "testing/EV-A71_recombinants.fasta"
+    params:
+        inter_recombinants = 10,
+        intra_recombinants = 10,
+        min_length = 3500,
+    run:
+        import random
+        from Bio import SeqIO
+        import pandas as pd
+
+        def eligible(records, ml):
+            return [r for r in records if len(r) >= ml]
+
+        # Load sequences and filter by Nextstrain IDs & min_length
+        seqs = list(SeqIO.parse(input.sequences, "fasta"))
+        ns_ids = list(pd.read_csv(input.nextstrain, sep="\t").accession)
+        
+        seqs = eligible([r for r in seqs if r.id in ns_ids], params.min_length)
+
+        # Map clade assignments
+        clade_map = pd.read_csv(input.clades, sep="\t").set_index("accession")["clade"].to_dict()
+        clade2seqs = {}
+        for r in seqs:
+            clade = clade_map.get(r.id, "NA")
+            clade2seqs.setdefault(clade, []).append(r)
+        clades = [c for c in clade2seqs if c != "NA" and len(clade2seqs[c]) > 0]
+
+        # EV-D sequences for intertypic recombination
+        evd = eligible(list(SeqIO.parse(input.evD_seq, "fasta")), params.min_length)
+
+        with open(output.recombinants, "w") as out:
+            # Intra-typic: between clades
+            for i in range(params.intra_recombinants):
+                c1, c2 = random.sample(clades, 2)
+                p1, p2 = random.choice(clade2seqs[c1]), random.choice(clade2seqs[c2])
+                minlen = min(len(p1.seq), len(p2.seq))
+                if minlen < params.min_length: continue
+                x = random.randint(1, minlen-1)
+                out.write(f">intra_{p1.id}_{c1}_{x}_{p2.id}_{c2}\n{p1.seq[:x]}{p2.seq[x:]}\n")
+
+            # Inter-typic: A71 x EV-D
+            for i in range(params.inter_recombinants):
+                p1 = random.choice(seqs)
+                p2 = random.choice(evd)
+                minlen = min(len(p1.seq), len(p2.seq))
+                if minlen < params.min_length: continue
+                x = random.randint(1, minlen-1)
+                out.write(f">inter_{p1.id}_A71_{x}_{p2.id}_D\n{p1.seq[:x]}{p2.seq[x:]}\n")
 
 rule clean:
     shell:
