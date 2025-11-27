@@ -3,7 +3,7 @@ REFERENCE_ACCESSION =   "U22521.1" # EV-A71 BrCr
 GENES =                 ["VP4", "VP2", "VP3", "VP1", "2A", "2B", "2C", "3A", "3B", "3C", "3D"]
 MIN_DATE =              "1990-01-01"
 MIN_LENGTH =            "7000" # was 6000 for whole genome build on Nextstrain
-MAX_SEQS =              "1000" #TODO: set to 10000 for testing
+MAX_SEQS =              "1200" #TODO: set to 10000 for testing
 ID_FIELD=               "accession" # either accession or strain, used for meta-id-column in augur
 
 OUTGROUP = ["AF326750.2", "AY421769.1", "AY697461.1"] # EV-A125, CVA14, EV-A91
