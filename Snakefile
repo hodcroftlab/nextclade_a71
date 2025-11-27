@@ -30,13 +30,14 @@ COLORS =                "resources/colors.tsv"
 COLORS_SCHEMES =        "resources/color_schemes.tsv"
 INFERRED_ANCESTOR =     "resources/inferred-root.fasta"
 
-STAR_ROOT = False                   # whether to use star-like rooting method
+STAR_ROOT = True                   # whether to use star-like rooting method
 FETCH_SEQUENCES = True              # whether to fetch sequences from NCBI Virus via ingest workflow
 STATIC_ANCESTRAL_INFERRENCE = True  # whether to use the static inferred ancestral sequence
 INFERRENCE_RERUN = False            # whether to rerun the inference of the ancestral sequence worfkflow (inferred-root)
 
 INFERRED_SEQ_PATH = "results/sequences_with_ancestral.fasta" if STATIC_ANCESTRAL_INFERRENCE else SEQUENCES
 INFERRED_META_PATH = "results/metadata_with_ancestral.tsv" if STATIC_ANCESTRAL_INFERRENCE else "results/metadata.tsv"
+TREE = "results/tree.nwk" if not STAR_ROOT else "results/star_tree.nwk"
 
 include: "scripts/workflow_messages.snkm"
 configfile: PATHOGEN_JSON
@@ -432,7 +433,7 @@ if STAR_ROOT==True:
 
 rule ancestral:
     input:
-        tree=rules.refine.output.tree,
+        tree=TREE,
         alignment=rules.exclude.output.filtered_sequences,
         annotation=GENBANK_PATH,
     output:
@@ -460,7 +461,7 @@ rule ancestral:
 
 rule clades:
     input:
-        tree = rules.star_like_rooting.output.tree if STAR_ROOT == True else rules.refine.output.tree,
+        tree=TREE,
         mutations = rules.ancestral.output.node_data,
         clades = CLADES
     output:
@@ -554,7 +555,7 @@ rule get_dates:
 rule epitopes:
     input:
         anc_seqs = rules.ancestral.output.node_data,
-        tree = rules.refine.output.tree,
+        tree=TREE,
     output:
         node_data = "results/epitopes.json"
     params:
@@ -641,7 +642,7 @@ rule colors:
 
 rule export: 
     input:
-        tree = rules.refine.output.tree,
+        tree=TREE,
         metadata = rules.exclude.output.filtered_metadata,
         mutations = rules.ancestral.output.node_data,
         branch_lengths = rules.refine.output.node_data,
