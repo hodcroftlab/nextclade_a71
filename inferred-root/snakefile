@@ -1,28 +1,24 @@
 # Set the parameters
-REFERENCE_ACCESSION =   "U22521"
+REFERENCE_ACCESSION =   "U22521.1" # EV-A71 BrCr
 GENES =                 ["VP4", "VP2", "VP3", "VP1", "2A", "2B", "2C", "3A", "3B", "3C", "3D"]
-MIN_DATE =              "1950-01-01"
-MIN_LENGTH =            "6000" # was 6000 for whole genome build on Nextstrain
-MAX_SEQS =              "1000" #TODO: set to 10000 for testing
-ROOTING =               "mid_point"  # alternative root using outgroup, e.g. the reference "AY426531.1"
+MIN_DATE =              "1990-01-01"
+MIN_LENGTH =            "7000" # was 6000 for whole genome build on Nextstrain
+MAX_SEQS =              "1200" #TODO: set to 10000 for testing
 ID_FIELD=               "accession" # either accession or strain, used for meta-id-column in augur
 
-# Set the paths
-GFF_PATH =              "../dataset/genome_annotation.gff3"
-REFERENCE_PATH =        "../dataset/reference.fasta"
+OUTGROUP = ["AF326750.2", "AY421769.1", "AY697461.1"] # EV-A125, CVA14, EV-A91
+# OUTGROUP = REFERENCE_ACCESSION
 
-GENBANK_PATH =          "../resources/reference.gbk"
+# Set the paths (make sure they are the same as those in the top-level Snakefile)
 EXCLUDE =               "../resources/exclude.txt"
-
 SEQUENCES =             "../data/sequences.fasta"
 METADATA =              "../results/metadata.tsv"
-INCLUDE =               "../resources/include.txt"
-ANCESTRAL_ROOT =        "resources/inferred-root.fasta"
+INCLUDE =               "../results/include.txt"
+INFERRED_ANCESTOR =     "resources/inferred-root.fasta"
 
-
-rule all:
+rule all_sub:
     input:
-        seqs = ANCESTRAL_ROOT
+        seqs = INFERRED_ANCESTOR
     shell:
         """
         cp {input.seqs} ../{input.seqs}
@@ -85,51 +81,25 @@ rule filter:
 
         """
 
-rule align:
-    message:
-        """
-        Aligning sequences to {input.reference} using Nextclade3.
-        """
+rule join_fastas:
     input:
-        sequences = rules.filter.output.filtered_sequences,
-        reference = REFERENCE_PATH,
-        annotation = GFF_PATH,
-    output:
-        alignment = "results/aligned.fasta",
-        tsv = "results/nextclade.tsv",
-    params:
-        translation_template = lambda w: "results/translations/cds_{cds}.translation.fasta",
-        penalty_gap_extend = 2, #make longer gaps more costly - default is 0
-        penalty_gap_open = 20,  #make gaps more expensive relative to mismatches - default is 13
-        penalty_gap_open_in_frame = 30, #make gaps more expensive relative to mismatches - default is 7
-        penalty_gap_open_out_of_frame = 23, #make out of frame gaps more expensive - default is 8 # prev was 19
-        kmer_length = 8, #reduce to find more matches - default is 10
-        kmer_distance = 25, #reduce to try more seeds - default is 50
-        min_match_length = 30, #reduce to keep more seeds - default is 40
-        allowed_mismatches = 15, #increase to keep more seeds - default is 8
-        min_length = 100, # min_length - default is 100
-        #cost of a mutation is 4
-    shell:
+        outgroup= expand("resources/outgroup/{o}.fasta", o = OUTGROUP),
+        ingroup= rules.filter.output.filtered_sequences,
+    output: "results/joined.fasta"
+    shell: 
         """
-        nextclade3 run \
-        -j {threads} \
-        {input.sequences} \
-        --input-ref {input.reference} \
-        --input-annotation {input.annotation} \
-        --penalty-gap-open {params.penalty_gap_open} \
-        --penalty-gap-extend {params.penalty_gap_extend} \
-        --penalty-gap-open-in-frame {params.penalty_gap_open_in_frame} \
-        --penalty-gap-open-out-of-frame {params.penalty_gap_open_out_of_frame} \
-        --kmer-length {params.kmer_length} \
-        --kmer-distance {params.kmer_distance} \
-        --min-match-length {params.min_match_length} \
-        --allowed-mismatches {params.allowed_mismatches} \
-        --min-length {params.min_length} \
-        --include-reference false \
-        --output-tsv {output.tsv} \
-        --output-translations {params.translation_template} \
-        --output-fasta {output.alignment} 
-        """        
+        cat {input.outgroup} {input.ingroup} > tmp.fasta
+        seqkit rmdup -n tmp.fasta -o {output}
+        rm tmp.fasta
+        """
+
+
+rule align_fastas:
+    input: rules.join_fastas.output
+    params: 
+    output: "results/aligned.fasta"
+    threads: workflow.cores
+    shell: "mafft --thread {threads} --auto {input} > {output}"
 
 rule tree:
     message:
@@ -137,77 +107,41 @@ rule tree:
         Creating a maximum likelihood tree
         """
     input:
-        alignment = rules.align.output.alignment,
-    output:
-        tree = "results/tree_raw.nwk",
-    threads: 9
+        rules.align_fastas.output
+    output: 
+        "results/tree.nwk"
+    threads: workflow.cores
     shell:
         """
         augur tree \
-            --alignment {input.alignment} \
+            --alignment {input} \
             --nthreads {threads}\
-            --output {output.tree} \
+            --output {output} \
         """
 
-
-rule refine:
+rule pick_ancestral_sequence:
     input:
-        tree=rules.tree.output.tree,
-        alignment=rules.align.output.alignment,
-    output:
-        tree="results/tree.nwk",
-        node_data="results/branch_lengths.json",
-    shell:
-        """
-        augur refine \
-            --tree {input.tree} \
-            --alignment {input.alignment} \
-            --root {ROOTING} \
-            --keep-polytomies \
-            --divergence-unit mutations-per-site \
-            --output-node-data {output.node_data} \
-            --output-tree {output.tree}
-        """
-
-
-rule ancestral:
-    input:
-        tree = rules.refine.output.tree,
-        alignment = rules.align.output.alignment,
-        annotation = GENBANK_PATH,
-        reference = REFERENCE_PATH,
-    output:
-        node_data="results/muts.json",
-        ancestral_sequences="results/ancestral_sequences.fasta",
-        # root = ANCESTRAL_ROOT
+        tree = rules.tree.output,
+        alignment = rules.align_fastas.output,
+        sequences = rules.filter.output.filtered_sequences,
     params:
-        translation_template=r"results/translations/cds_%GENE.translation.fasta",
-        output_translation_template=r"results/translations/cds_%GENE.ancestral.fasta",
-        genes=" ".join(GENES),
-    shell:
-        """
-        augur ancestral \
-            --tree {input.tree} \
-            --alignment {input.alignment} \
-            --annotation {input.annotation} \
-            --root-sequence {input.annotation} \
-            --genes {params.genes} \
-            --translations {params.translation_template} \
-            --output-node-data {output.node_data} \
-            --output-translations {params.output_translation_template}\
-            --output-sequences {output.ancestral_sequences}
+        outgroup = OUTGROUP,
+        reference = REFERENCE_ACCESSION,
+    output: 
+        INFERRED_ANCESTOR
+    shell: """
+        python ../scripts/pick_ancestral_sequence.py \
+            {input.tree} \
+            {input.alignment} \
+            {input.sequences} \
+            "{params.outgroup}"\
+            {params.reference} \
+            {output}
         """
 
-rule extract_root:
-    input:
-        ancestral_sequences = rules.ancestral.output.ancestral_sequences,
-        reference = REFERENCE_PATH,
-    output:
-        root = ANCESTRAL_ROOT
+rule clean:
     shell:
         """
-        python3 ../scripts/fix_root_gaps.py \
-            --ancestral {input.ancestral_sequences} \
-            --reference {input.reference} \
-            --output {output.root}
+        rm ../resources/inferred-root.fasta resources/inferred-root.fasta
+        rm -r results/*
         """

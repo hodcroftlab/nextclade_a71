@@ -28,6 +28,7 @@ nextclade_cli.md
 resources/meta_public.tsv
 resources/clade_map.tsv
 resources/accession_strain.tsv
+resources/subgenotypes_rivm.csv
 
 # unused scripts
 scripts/rmdup.py

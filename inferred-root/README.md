@@ -1,62 +1,184 @@
-# Inferred Ancestral Sequence for Enterovirus A71
+# Inferred Ancestral Root Sub-Workflow
 
-This repository provides a reproducible workflow for generating a static inferred ancestral ("root") sequence for Enterovirus A71, designed for use as a custom reference in [Nextclade](https://clades.nextstrain.org/) analyses.
+This sub-workflow generates a **Static Inferred Ancestor** for Enterovirus A71 (EV-A71) using outgroup rooting. This ancestral sequence represents the MRCA (most recent common ancestor) of all EV-A71 sequences and serves as a stable, biologically accurate reference for the Nextclade dataset.
 
-
-## Overview
-
-Phylogenetic analyses, such as those performed by Nextclade and Augur, benefit from a high-quality, dataset-representative reference sequence. This workflow infers such a static sequence by reconstructing the ancestral sequence from your entire  dataset, allowing for more accurate mutation and clade assignments.
-
-**Workflow summary:**
-1. **Phylogenetic Tree Construction:** All sequences in the provided dataset are aligned and a maximum-likelihood tree is built.
-2. **Ancestral Sequence Inference:** The [Augur](https://github.com/nextstrain/augur) toolkit is used to infer the ancestral (root) sequence, labeled `NODE_0000000` in the output FASTA.
-3. **Gap Correction:** The script [`fix_root_gaps.py`](scripts/fix_root_gaps.py) replaces any gaps (`-`) or ambiguous bases (`N`) in the inferred sequence with the corresponding reference nucleotides, ensuring a contiguous and biologically plausible inferred sequence. 
-4. **Export:** The cleaned ancestral sequence FASTA is available for use as a custom reference in Nextclade. The corresponding metadata is also provided and should be kept in sync.
-
-
-## Getting Started
-### Running the Workflow
-
-To generate the static inferred ancestral sequence:
-
-```bash
-snakemake --cores 9 all
-```
-
-This will:
-- Build a phylogenetic tree and infer the ancestral root
-- Extract and gap-correct the root sequence (`NODE_0000000`)
-- Output a finalized FASTA and updated metadata
-
-### Output Files
-
-- `results/ancestral_sequences.fasta`: All inferred ancestral sequences (from Augur)
-- `resources/inferred_root.fasta`: Gap-corrected ancestral sequence
-
-
-## Updating the Ancestral Root or Metadata
-
-If you update your dataset or rerun the workflow:
-- **Be sure to also update the corresponding [metadata file](../resources/static_inferred_metadata.tsv)**  to match the new inferred sequence.
-- Record the date of the latest update (see below).
-
-**Latest static inferred sequence generated:**  
-📅 23/10/2025
-
+> [!NOTE]  
+> This README is for users who want to **regenerate** the inferred root (i.e., `INFERRENCE_RERUN = True`). For general information about how the inferred root is used in the main workflow, see the [main README](../README.md#inferred-ancestral-root-with-outgroup-rooting-recommended).
 
 ---
-## FAQ
 
-**Q: Why use a static inferred ancestor for Nextclade?**  
-A: Using an inferred ancestral sequence representative of your dataset improves mutation calling and clade assignment, especially for highly variable viruses like Enteroviruses.
+## When to Regenerate the Inferred Root
 
-**Q: How is the inferred sequence cleaned?**  
-A: Gaps or ambiguous bases in the inferred root are replaced positionally with nucleotides from the reference sequence using [`fix_root_gaps.py`](scripts/fix_root_gaps.py). For some viruses (e.g., CVA10), it may be preferable to use the most common nucleotide at each position — please adapt the script as needed!
+You should regenerate the inferred root when:
+- **First-time setup:** `resources/inferred-root.fasta` doesn't exist yet
+- **New data:** You've added significant new sequences that may shift the root position
+- **Updated outgroups:** You've changed which enterovirus species are used as outgroups
+- **Different subsampling:** You want to test sensitivity with a different sequence subset
 
-**Q: Can I use this approach for other enteroviruses?**  
-A: Yes! For a ready-to-use template, see [enterovirus-phylo/dataset-template-inferred-root](https://github.com/enterovirus-phylo/dataset-template-inferred-root).
+---
+
+## Configuration
+
+### Snakefile Parameters
+
+Edit the first 8 lines of [`inferred-root/Snakefile`](Snakefile) to configure:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `REFERENCE_ACCESSION` | `"U22521"` | GenBank accession for the reference (Fermon) |
+| `MIN_DATE` | `"1990-01-01"` | Earliest collection date to include |
+| `MIN_LENGTH` | `"7000"` | Minimum sequence length (bp) |
+| `MAX_SEQS` | `"1000"` | Maximum sequences to subsample for tree building |
+| `ID_FIELD` | `"accession"` | Metadata column for sequence IDs |
+| `OUTGROUP` | List of accessions | Enterovirus species used to root the tree |
+
+### Outgroup Sequences
+
+Outgroup sequences must be placed in `resources/outgroup/` as individual FASTA files, named by their accession ID:
+
+```
+resources/outgroup/
+├── AF326750.2.fasta
+├── AY421769.1.fasta
+```
+
+**Current default outgroups:**
+- Other enterovirus D species (e.g., EV-D70, EV-D94, EV-D111)
+- Closely related enteroviruses that root the EV-A71 tree
+
+To add or modify outgroups:
+1. Add FASTA files to `resources/outgroup/`
+2. Update the `OUTGROUP` list in `inferred-root/Snakefile`
+
+---
+
+## How It Works
+
+The workflow performs the following steps:
+
+### 1. Subsample & Filter
+- Filters sequences by date (`MIN_DATE`) and length (`MIN_LENGTH`)
+- Subsamples to `MAX_SEQS` sequences using `augur filter`
+- The rule `join_fastas` merges the filtered sequences with the outgroup sequences 
+
+### 2. Align
+- Aligns the combined ingroup + outgroup sequences using MAFFT
+- Produces a multiple sequence alignment for phylogenetic analysis
+
+### 3. Build Tree
+- Constructs a maximum-likelihood tree with `augur tree` (IQ-TREE)
+- Tree includes both EV-A71 sequences and outgroup species
+
+### 4. Root & Extract Ancestor
+- [`pick_ancestral_sequence.py`](../scripts/pick_ancestral_sequence.py) reroots the tree on the outgroup(s)
+- Identifies the **MRCA of the ingroup** (all EV-A71 sequences)
+- Extracts the reconstructed ancestral sequence at this node
+- **Fills gaps** with nucleotides from the reference to ensure a complete genome
+
+### 5. Export
+- Saves the inferred root as `resources/inferred-root.fasta`
+- Creates a visualization of the rooted tree: `results/nwk_tree_outgroup.png`
+
+---
+
+## Running the Sub-Workflow
+
+### Standalone Execution
+
+To run the inferred-root sub-workflow independently:
+
+```bash
+cd inferred-root
+snakemake --cores 9 all_sub
+```
+
+---
+
+## Requirements
+
+- **Snakemake** — Workflow management
+- **Augur** (nextstrain/augur) — Phylogenetic tools (`filter`, `tree`, `merge`)
+- **MAFFT** — Multiple sequence alignment
+- **IQ-TREE** (via augur) — Maximum-likelihood tree inference
+- **TreeTime** — Ancestral reconstruction (via custom script)
+- **Python packages:** Biopython, pandas, typer, matplotlib
+
+---
+
+## Validation & Quality Control
+
+After running, verify the output:
+
+### 1. Check the Inferred Root Sequence
+
+```bash
+# View the sequence header
+grep ">" ../resources/inferred-root.fasta
+
+# Check sequence length
+seqkit stats ../resources/inferred-root.fasta
+```
+
+Expected: Should be ~7,500 bp (full EV-A71 genome) with ID `ancestral_sequence`
+
+### 2. Inspect the Rooted Tree
+
+Open `results/nwk_tree_outgroup.png` to visually confirm:
+- Outgroup sequences are at the base of the tree
+- EV-A71 sequences form a monophyletic clade
+- The root is positioned correctly between outgroup and ingroup
+
+### 3. Verify Metadata Consistency
+
+```bash
+# Check that the ancestral sequence ID matches metadata
+cat ../resources/static_inferred_metadata.tsv
+```
+
+The `accession` (or `strain`) column should contain `ancestral_sequence` matching the FASTA header.
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**Problem:** `augur filter` produces no sequences  
+**Solution:** Check that `MIN_DATE`, `MIN_LENGTH`, and `MAX_SEQS` parameters are appropriate for your dataset. Verify that `data/sequences.fasta` and `data/metadata.tsv` exist.
+
+**Problem:** MAFFT alignment fails  
+**Solution:** Ensure outgroup sequences are valid FASTA files and compatible with EV-A71 (same genomic region). Outgroups should be closely related enteroviruses.
+
+**Problem:** Tree rooting fails with "outgroup not found"  
+**Solution:** Verify that the outgroup accessions in the `OUTGROUP` list exactly match the FASTA headers in `resources/outgroup/*.fasta`.
+
+**Problem:** Inferred sequence has many gaps  
+**Solution:** This is expected for divergent regions. The script fills gaps with reference nucleotides. If excessive, consider exluding divergent sequences in `../resources/exclude.txt`.
+
+**Problem:** `pick_ancestral_sequence.py` fails  
+**Solution:** Ensure TreeTime is installed and that BioPython is up-to-date.
+
+---
+
+## Tips and Best Practices
+
+- **Keep metadata synchronized:** Ensure `resources/static_inferred_metadata.tsv` has all required columns matching your main metadata
+- **Document outgroup choices:** Add comments in the Snakefile explaining why specific outgroups were selected
+- **Test sensitivity:** Try different `MAX_SEQS` values to confirm the inferred root is stable
+- **Version control:** Commit the generated `resources/inferred-root.fasta` so others can reproduce your dataset without re-running inference
+- **Regenerate periodically:** When major new sequences are added (e.g., new clades, geographic regions), consider regenerating the root
+
+---
+
+## Additional Resources
+
+- **Template for other pathogens:** [dataset-template-inferred-root](https://github.com/enterovirus-phylo/dataset-template-inferred-root)
+- **Augur documentation:** https://docs.nextstrain.org/projects/augur/
+- **TreeTime documentation:** https://treetime.readthedocs.io/
+
+---
 
 ## Author & Contact
 
-- Maintainers: Nadia Neuner-Jehle, Alejandra Gonzalez Sanchez and Emma B. Hodcroft ([hodcroftlab](https://github.com/hodcroftlab))
+- Maintainers: Nadia Neuner-Jehle, Alejandra González-Sánchez and Emma B. Hodcroft ([eve-lab.org](https://eve-lab.org/))
 - For questions or suggestions, please [open an issue](https://github.com/enterovirus-phylo/dataset-template-inferred-root/issues) or email: eve-group[at]swisstph.ch

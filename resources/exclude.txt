@@ -1,64 +1,50 @@
-# BRcR references
+# BRcR references - genotype A
 JN874547
 U22521
 AB204852
 JQ766159
 AB204853
+PX021638
+KF501389
+PX021637
+GU434678
 		
+# mix up
+MG367591 	# DK07-01 metadata mixup?
+ 
+# higher diversity
+# LR027545
+
+# probably recombinants, dropped in VP1
+PP858877
+# PP548273
+# PP548263
+
+# high divergence -- long branches
+LC627090
+LC627089
+ON502276
+KX372322
+PP855530
+KP289419
+MG367593
+
+# too long; GPF included (Lab strain)
+AB469183
+
+# #unable to align
+HQ647170
+HQ647168
+
+# # high diversity, bad alignment; intertypic recombinant?
+# PP855530
+# JQ708209
+# OQ355781
+
 # host: Gorilla
 KF700265		
 KF700264
 KF614505
-
-# showing unreasonably high genetic divergence		
-KY115200
-AF116805		
-
-# mix up
-MG367591 	# DK07-01 metadata mixup?
-
-# check
-# JQ003960 	# is more diverged than the date suggests
-# JQ315074	# is more diverged than the date suggests
-# KC954664	# highly underdiverged
-
-# too short
-LR027526 # nextalign error message
-
-# higher diversity
-LR027545
-
-## exclude sequences that pull to the front
-JQ766155
-JQ766154
-JQ766153
-AB569431
-AB569430
-AB569429
-KC894871
-JQ766158
-JQ766157
-JQ766156
-KC894870
-
-## pulls tree up
-FN298933
-KU888158
-AF135899
-
-# not sure
-#AY278249 	# good demographic data, was passaged in cells though
-EU131739
-
-## pulls cluster back
-AB936544
-
-## cluster with high divergence
-#FN298934
-#FN298935
-#FN298937
-#FN298938
-#FN298936
 
 ## Lab/Model-adapted strains
 PP101991
@@ -96,8 +82,6 @@ MT241233
 MT241239    
 MT241238    
 #MT188611 	#parental strain
-
-# monkey study
 AB059818
 AB059817
 AB059816
@@ -306,54 +290,3 @@ MA895450
 LQ840035
 LG059178
 LC637980
-
-# at base of C4 root
-JQ003960
-JQ315074
-JQ315059
-JQ003959
-
-# low diversity
-KF982854
-KC954664
-
-# high diversity
-HQ676175
-
-# dropped through Nextclade alignment: "Unable to align: seed alignment was unable to find any matches that are long enough."
-HQ647168
-HQ647170
-JF420570
-
-# probably recombinants, dropped in VP1
-PP858877
-PP548273
-PP548263
-
-# outlier
-MH084344
-
-# unknown collection date
-GU434678
-
-# high divergence -- long branches
-AF135934
-LC627090
-LC627089
-ON502276
-KX372322
-PP855530
-KP289419
-MG367593
-
-# too long; GPF included (Lab strain)
-AB469183
-
-#unable to align
-HQ647170
-HQ647168
-
-# high diversity, bad alignment; intertypic recombinant?
-PP855530
-JQ708209
-OQ355781

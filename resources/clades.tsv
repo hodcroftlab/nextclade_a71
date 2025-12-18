@@ -3,30 +3,23 @@ B	nuc	1739	G
 B	nuc	4739	T
 B	nuc	5477	C
 
-B1	nuc	860	T
-B1	nuc	2009	C
-B1	nuc	4112	C
-B1	nuc	6215	T
-B1	3D	251	T
+B1	nuc	938	G
+B1	nuc	1346	T
+B1	nuc	1994	C
+B1	nuc	5774	T
 
-B2	3D	93	K
-B2	nuc	1655	T
-B2	nuc	6785	T
-B2	nuc	7143	A
+B2	nuc	5566	C
+B2	nuc	6932	C
 B2	nuc	7277	G
 
-B5	nuc	121	T
 B5	nuc	1409	A
 B5	nuc	2009	G
 B5	nuc	5415	C
-B5	nuc	6578	A
 
 B4	nuc	2930	G
-B4	nuc	6214	G
-B4	nuc	6284	C
-B4	3D	93	S
+B4	nuc	4301	T
+B4	nuc	6335	C
 
-B3	nuc	90	A
 B3	nuc	2768	T
 B3	nuc	3296	G
 B3	nuc	6968	G
@@ -36,7 +29,7 @@ C	nuc	3485	G
 
 C2r	nuc	2057	T
 C2r	nuc	4706	C
-C2r	nuc	5474	T
+C2r	nuc	5804	T
 
 C2	nuc	2972	A
 C2	nuc	4061	G
@@ -44,8 +37,6 @@ C2	nuc	5202	T
 C2	nuc	7355	T
 
 C3	nuc	809	G
-C3	3A	12	M
-C3	3D	137	N
 C3	nuc	4193	C
 
 C1	nuc	4610	C
