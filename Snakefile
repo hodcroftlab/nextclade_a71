@@ -91,27 +91,21 @@ rule curate:
         metadata = "results/metadata.tsv",  # Final output file for publications metadata
     shell:
         """
-        augur merge --metadata metadata={input.meta} strains={input.strains}\
+        augur merge --metadata metadata={input.meta} strains={input.strains} public={input.public}\
             --metadata-id-columns {params.strain_id_field} \
             --output-metadata metadata.tmp
-
-        augur merge --metadata metadata=metadata.tmp public={input.public}\
-            --metadata-id-columns {params.strain_id_field} \
-            --output-metadata metadata2.tmp
         
         augur curate normalize-strings \
-            --metadata metadata2.tmp \
+            --metadata metadata.tmp \
             --id-column {params.strain_id_field} \
-            --output-metadata metadata3.tmp
-
-        augur curate format-dates \
-            --metadata metadata3.tmp \
+        | augur curate format-dates \
             --id-column {params.strain_id_field} \
+            --no-mask-failure \
             --expected-date-formats {params.date_format} \
             --date-fields {params.date_fields} \
             --output-metadata {output.metadata}
 
-        rm metadata*.tmp
+        rm metadata.tmp
         """
 
 rule add_reference_to_include:
@@ -182,6 +176,7 @@ if STATIC_ANCESTRAL_INFERRENCE and not INFERRENCE_RERUN:
             seq = SEQUENCES,
             meta_ancestral = "resources/static_inferred_metadata.tsv",
             inref = INFERRED_ANCESTOR,
+            RIVM = "resources/subgenotypes_rivm.csv",
         output:
             seq = INFERRED_SEQ_PATH,
             meta = INFERRED_META_PATH,
@@ -194,7 +189,7 @@ if STATIC_ANCESTRAL_INFERRENCE and not INFERRENCE_RERUN:
 
             echo "Merging metadata..."
             augur merge \
-                --metadata metadata={input.meta} ancestral={input.meta_ancestral} \
+                --metadata metadata={input.meta} ancestral={input.meta_ancestral} rivm={input.RIVM} \
                 --metadata-id-columns {params.strain_id_field} \
                 --output-metadata {output.meta}
 
@@ -408,12 +403,14 @@ if STAR_ROOT==True:
             tree=ancient(rules.refine.output.tree),
             clades="resources/clade_map.tsv", # TODO: the "clade_map" has to be downloaded from Nextstrain auspice metadata: 
                                                 # "accession\tclade" format - use a tree with all sequences if possible `df = df.loc[:,["accession", "clade_membership"]]`
-            recombinant_accessions="resources/recombinants.tsv"  # Format: "accession" (one per line, with header)
+            recombinant_accessions="resources/recombinants.tsv",  # Format: "accession" (one per line, with header)
+            alignment=rules.exclude.output.filtered_sequences,
         output:
-            tree="results/star_tree.nwk"
+            tree="results/star_tree.nwk",
+            node_data="results/branch_lengths.json",
         params:
             strain_id_field=ID_FIELD,
-            recombinant_clades = ["C2r", "C1-like","C2-like", "E", "F", "A"],
+            recombinant_clades = ["C2r", "C1-like","C2-like", "E", "F", "A", "C6"],
             root_name="NODE_0000000"
         log:
             "logs/star_like_rooting.log"
@@ -428,6 +425,15 @@ if STAR_ROOT==True:
                 --recombinant_clades {params.recombinant_clades} \
                 --root_name {params.root_name} \
                 2>&1 | tee {log}
+
+            augur refine \
+            --tree {output.tree} \
+            --alignment {input.alignment} \
+            --root {ROOTING} \
+            --keep-polytomies \
+            --divergence-unit mutations-per-site \
+            --output-node-data {output.node_data} \
+            --output-tree {output.tree}
             """
 
 
@@ -650,10 +656,10 @@ rule export:
         auspice_config = AUSPICE_CONFIG,
         colors = rules.colors.output.final_colors,
         epitopes = rules.epitopes.output.node_data,
-        lat_long = "resources/lat_longs.tsv"
+        lat_long = "resources/lat_longs.tsv",
+        recombinants = rules.recombinant_clades.output.node_data
     params:
         strain_id_field = ID_FIELD,
-        fields="region country date",
     output:
         auspice = "results/auspice.json",
     shell:
@@ -664,11 +670,11 @@ rule export:
             --metadata-id-columns {params.strain_id_field} \
             --auspice-config {input.auspice_config} \
             --lat-longs {input.lat_long} \
-            --node-data {input.mutations} {input.branch_lengths} {input.clades} \
-            --color-by-metadata {params.fields} \
+            --node-data {input.mutations} {input.branch_lengths} {input.clades} {input.recombinants}  \
             --colors {input.colors} \
             --output {output.auspice}
         """
+        # {input.epitopes}
 
 rule extract_clades_tsv:
     input:
