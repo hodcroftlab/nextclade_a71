@@ -6,7 +6,7 @@ import sys
 import logging
 import argparse
 from typing import Dict, List, Optional
-import ipdb
+import matplotlib.pyplot as plt
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -280,8 +280,17 @@ def main():
         
         # Create star tree
         star_tree = assigner.create_star_tree(root_name=args.root_name)
+        # print("Root:", args.root_name)
 
-        # Phylo.draw(star_tree)
+        # # reroot with ancestral sequence
+        # star_tree.root_with_outgroup("ancestral_sequence")
+
+        # plot star-root tree
+        fig = plt.figure(figsize=(8, 10))     # define figure size
+        ax = fig.add_subplot(1, 1, 1)
+        Phylo.draw(star_tree, do_show=False, axes=ax)
+        plt.savefig("results/star_tree.png", dpi=300, bbox_inches="tight")
+        plt.close(fig)
         
         # Write output
         Phylo.write(star_tree, args.output_tree, "newick")

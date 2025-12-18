@@ -7,6 +7,7 @@ KJ686275 # good; C4
 
 # recombinant
 LR798440
+PP858877
 
 # JN316089 #B5
 # DQ341364 #B5

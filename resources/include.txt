@@ -8,6 +8,12 @@ KF501389 #A
 DQ341355
 DQ341356
 
+# C5
+MG756705
+
+# C2
+HM622391
+
 ## include recombinants
 # C2-like
 JQ280307
@@ -16,6 +22,7 @@ HM622392
 # C1-like
 PP417830
 PP548271
+OR766776
 
 # C2r
 MG672481
