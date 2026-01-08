@@ -37,7 +37,7 @@ INFERRENCE_RERUN = False            # whether to rerun the inference of the ance
 
 INFERRED_SEQ_PATH = "results/sequences_with_ancestral.fasta" if STATIC_ANCESTRAL_INFERRENCE else SEQUENCES
 INFERRED_META_PATH = "results/metadata_with_ancestral.tsv" if STATIC_ANCESTRAL_INFERRENCE else "results/metadata.tsv"
-TREE = "results/tree.nwk" if not STAR_ROOT else "results/star_tree.nwk"
+TREE = "results/output_tree.nwk" if not STAR_ROOT else "results/star_tree.nwk"
 
 include: "scripts/workflow_messages.snkm"
 configfile: PATHOGEN_JSON
@@ -429,7 +429,7 @@ if STAR_ROOT==True:
             augur refine \
             --tree {output.tree} \
             --alignment {input.alignment} \
-            --root {ROOTING} \
+            # --root {ROOTING} \ # root in star-like rooting script, use founder sequences
             --keep-polytomies \
             --divergence-unit mutations-per-site \
             --output-node-data {output.node_data} \
@@ -480,54 +480,54 @@ rule clades:
             --output-node-data {output}
         """
 
-rule recombinant_clades:
-    """
-    Mark accessions listed in resources/recombinants.tsv as 'recombinant' in the
-    augur clades JSON produced by the clades rule. Writes a new clades JSON
-    for downstream export.
-    """
-    input:
-        clades=rules.clades.output,
-        recombinants="resources/recombinants.tsv",  # one-column TSV or header+column
-    output:
-        node_data="results/clades_recombinant.json",
-    run:
-        import json
-        import pandas as pd
-        import os
+# rule recombinant_clades:
+#     """
+#     Mark accessions listed in resources/recombinants.tsv as 'recombinant' in the
+#     augur clades JSON produced by the clades rule. Writes a new clades JSON
+#     for downstream export.
+#     """
+#     input:
+#         clades=rules.clades.output,
+#         recombinants="resources/recombinants.tsv",  # one-column TSV or header+column
+#     output:
+#         node_data="results/clades_recombinant.json",
+#     run:
+#         import json
+#         import pandas as pd
+#         import os
 
-        # load recombinants (assume first column is accession)
-        df = pd.read_csv(input.recombinants, sep="\t", dtype=str, header=0)
-        recomb = set(df["accession"].to_list())
+#         # load recombinants (assume first column is accession)
+#         df = pd.read_csv(input.recombinants, sep="\t", dtype=str, header=0)
+#         recomb = set(df["accession"].to_list())
 
-        with open(input.clades[0], "r") as fh:
-            clades = json.load(fh)
+#         with open(input.clades[0], "r") as fh:
+#             clades = json.load(fh)
 
-        if not recomb:
-            print("No recombinants loaded; writing input clades file unchanged.")
-            with open(output.node_data, "w") as fh:
-                json.dump(clades, fh, indent=2)
-            return
+#         if not recomb:
+#             print("No recombinants loaded; writing input clades file unchanged.")
+#             with open(output.node_data, "w") as fh:
+#                 json.dump(clades, fh, indent=2)
+#             return
 
-        # clades JSON is expected to have structure {"nodes": {node_name: {...}, ...}, ...}
-        nodes = clades.get("nodes", {})
-        changed = 0
-        missing = []
-        for acc in sorted(recomb):
-            if acc in nodes:
-                node = nodes[acc]
-                node["clade_membership"] = "recombinant"
-                node.pop("clade_annotation", None)
-                changed += 1
-            else:
-                missing.append(acc)
+#         # clades JSON is expected to have structure {"nodes": {node_name: {...}, ...}, ...}
+#         nodes = clades.get("nodes", {})
+#         changed = 0
+#         missing = []
+#         for acc in sorted(recomb):
+#             if acc in nodes:
+#                 node = nodes[acc]
+#                 node["clade_membership"] = "recombinant"
+#                 node.pop("clade_annotation", None)
+#                 changed += 1
+#             else:
+#                 missing.append(acc)
 
-        print(f"Marked {changed} nodes as recombinant (from {len(recomb)} accessions provided).")
-        if missing:
-            print(f"{len(missing)} accessions not found in clades JSON; first few: {missing[:10]}")
+#         print(f"Marked {changed} nodes as recombinant (from {len(recomb)} accessions provided).")
+#         if missing:
+#             print(f"{len(missing)} accessions not found in clades JSON; first few: {missing[:10]}")
 
-        with open(output.node_data, "w") as fh:
-            json.dump(clades, fh, indent=2)
+#         with open(output.node_data, "w") as fh:
+#             json.dump(clades, fh, indent=2)
 
 
 rule get_dates:
@@ -657,7 +657,7 @@ rule export:
         colors = rules.colors.output.final_colors,
         epitopes = rules.epitopes.output.node_data,
         lat_long = "resources/lat_longs.tsv",
-        recombinants = rules.recombinant_clades.output.node_data
+        # recombinants = rules.recombinant_clades.output.node_data
     params:
         strain_id_field = ID_FIELD,
     output:
@@ -670,7 +670,7 @@ rule export:
             --metadata-id-columns {params.strain_id_field} \
             --auspice-config {input.auspice_config} \
             --lat-longs {input.lat_long} \
-            --node-data {input.mutations} {input.branch_lengths} {input.clades} {input.recombinants}  \
+            --node-data {input.mutations} {input.branch_lengths} {input.clades}  \
             --colors {input.colors} \
             --output {output.auspice}
         """
@@ -936,6 +936,6 @@ rule recombinant_testing:
 rule clean:
     shell:
         """
-        rm ingest/data/* data/*
-        rm -r results out-dataset test_out dataset.zip tmp
+        rm -v ingest/data/*.* data/*.*
+        rm -rv results out-dataset test_out dataset.zip tmp
         """

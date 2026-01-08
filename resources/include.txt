@@ -2,7 +2,9 @@ JX025561
 
 # root
 AB575911 #B
-KF501389 #A
+
+## A
+KF501389
 
 ## C3
 DQ341355
@@ -11,13 +13,14 @@ DQ341356
 # C5
 MG756705
 
+# B3
+EU364841
+AM396588
+
 # C2
 HM622391
 
 ## include recombinants
-# C2-like
-JQ280307
-HM622392
 
 # C1-like
 PP417830
@@ -37,3 +40,8 @@ MG672478
 # other recombinants
 LC627089
 KJ686249
+
+# C2-like
+HM622391
+JQ280307
+HM622392
