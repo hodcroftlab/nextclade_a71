@@ -7,7 +7,7 @@ Each function is independently testable and returns intermediate objects.
 Usage:
     python star_like_rooter.py \
         --input_tree "results/tree.nwk" \
-        --input_clades "resources/clade_map.tsv" \
+        --input_clades "resources/clades_metadata.tsv" \
         --recombinant_accessions "resources/recombinants.tsv" \
         --output_tree "results/star_tree.nwk" \
         --ancestral_name "ancestral_sequence" \
@@ -115,6 +115,7 @@ def compute_strain_groups(
     strain_id_field: str,
     recombinant_accessions: Set[str],
     recombinant_clades: List[str],
+    clade_field: str = "clade",
 ) -> Dict[str, str]:
     """
     Assign every strain in the metadata to a group (clade name, "RF",
@@ -125,6 +126,9 @@ def compute_strain_groups(
         strain_id_field: Column name for strain IDs.
         recombinant_accessions: Set of recombinant accessions.
         recombinant_clades: List of recombinant clade names.
+        clade_field: Column name holding the clade assignment (e.g. "clade"
+            for augur-clades output, or "clade_membership"/"Nextstrain_clade"
+            for a Nextstrain-style metadata table).
 
     Returns:
         Dictionary mapping strain ID → group name.
@@ -142,13 +146,38 @@ def compute_strain_groups(
             continue
 
         strain_to_group[strain] = assign_group(
-            row["clade"],
+            row[clade_field],
             strain,
             recombinant_accessions,
             recombinant_clades,
         )
 
     return strain_to_group
+
+
+def find_unclassified_terminals(
+    tree: Tree,
+    strain_to_group: Dict[str, str],
+) -> Set[str]:
+    """
+    Find tree tips that have no entry at all in strain_to_group.
+
+    These tips get treated as "unassigned" (non-recombinant) by default,
+    which can silently block otherwise-adjacent recombinant clades from
+    being merged into a single reattachment point - typically a sign that
+    the clade metadata is stale relative to the current tree (e.g. built
+    from a different, previously subsampled strain set).
+
+    Args:
+        tree: Tree to check.
+        strain_to_group: Mapping of strain ID → group name.
+
+    Returns:
+        Set of terminal names present in the tree but absent from
+        strain_to_group.
+    """
+    tree_tips = {t.name for t in tree.get_terminals() if t.name}
+    return tree_tips - strain_to_group.keys()
 
 
 # ============================================================================
@@ -351,12 +380,26 @@ def create_star_tree(
     root = tree.root
     root.name = root_name
 
+    # Track every name already in use so newly generated ancestor names
+    # can't collide with each other or with existing nodes: disjoint
+    # fragments of the same recombinant clade (e.g. after subsampling)
+    # would otherwise all be named identically (e.g. "C6_root").
+    used_names = {c.name for c in tree.find_clades() if c.name}
+
     attached = 0
     total_strains_attached = 0
 
     for node in top_ancestors:
         if not node.name or node.name.startswith("NODE_"):
-            node.name = name_for_ancestor(node, strain_to_group)
+            base_name = name_for_ancestor(node, strain_to_group)
+            name = base_name
+            suffix = 1
+            while name in used_names:
+                suffix += 1
+                name = f"{base_name}_{suffix}"
+            node.name = name
+
+        used_names.add(node.name)
 
         n_terminals = node.count_terminals()
 
@@ -436,6 +479,18 @@ def main():
             recombinant_accessions,
             recombinant_clades,
         )
+
+        unclassified = find_unclassified_terminals(tree, strain_to_group)
+        if unclassified:
+            pct = 100 * len(unclassified) / len(terminal_names)
+            logger.warning(
+                f"{len(unclassified)}/{len(terminal_names)} ({pct:.1f}%) tree tips have NO "
+                f"row in --input_clades and will be treated as non-recombinant 'unassigned' "
+                f"strains. This commonly happens when the clade metadata is stale relative "
+                f"to the current tree (e.g. built from a different subsample) and can "
+                f"silently fragment recombinant clades that should be merged. "
+                f"Missing accessions (up to 10 shown): {sorted(unclassified)[:10]}"
+            )
 
         #%%
         # Create star tree

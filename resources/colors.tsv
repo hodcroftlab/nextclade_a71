@@ -203,25 +203,3 @@ country	Peru	#B1531E
 country	Suriname	#E38838
 country	Uruguay	#D77929
 country	Venezuela	#E48939
-
-clade_membership	A	#511ea8
-clade_membership	B	#4236c1
-clade_membership	B1	#3f55ce
-clade_membership	B2	#4273ce
-clade_membership	B3	#4a8cc2
-clade_membership	B4	#569faf
-clade_membership	B5	#64ad98
-clade_membership	C	#76b680
-clade_membership	C1	#76b680
-clade_membership	C1-like	#8bbb6a
-clade_membership	C2	#9ebe59
-clade_membership	C2-like	#b3bd4d
-clade_membership	C2r	#c5b945
-clade_membership	C3	#d5b03f
-clade_membership	C4	#e0a23a
-clade_membership	C5	#e68d36
-clade_membership	E	#e1502a
-clade_membership	F	#e1502a
-clade_membership	G	#dc2f24
-clade_membership	recombinant	#D0D0D0
-clade_membership	unassigned	#D0D0D0
