@@ -4,16 +4,17 @@ U22521
 AB204852
 JQ766159
 AB204853
-#PX021638
-#KF501389
+PX021638
 PX021637
 GU434678
+KF501389
 		
 # mix up
 MG367591 	# DK07-01 metadata mixup?
  
-# higher diversity
-# LR027545
+# higher divergence, 1966 sequences
+AB575912
+AB575911
 
 # probably recombinants, dropped in VP1
 PP858877
@@ -40,6 +41,7 @@ KF700264
 KF614505
 
 ## Lab/Model-adapted strains
+JN544419
 PP101991
 LC375765	#Transgenic Mice
 LC506515	#Transgenic Mice
@@ -91,12 +93,28 @@ AB550341
 ON646273
 AY053402
 
+## outliers
+AF302996
+KF982854
+OK570251 # same sample as LT719063
+AF119795
+KX372309
+
 ## cDNA clone with mutations
 KT354871
 KT354872
 KT354873
 KT354874
 KT354875
+
+#neutralizing antibody escape mutant
+KM077140
+
+# lab escape mutant
+PV176308
+
+## many gaps; unverified
+OR822244
 
 ## more than 5 passages in RD cells
 JQ950555

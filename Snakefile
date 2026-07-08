@@ -2,7 +2,7 @@
 REFERENCE_ACCESSION =   "U22521"
 TAXON_ID =              39054
 GENES =                 ["VP4", "VP2", "VP3", "VP1", "2A", "2B", "2C", "3A", "3B", "3C", "3D"]
-ALLOWED_DIVERGENCE =    "3000" # was 
+ALLOWED_DIVERGENCE =    "2000" # was 
 MIN_DATE =              "1960-01-01"
 MIN_LENGTH =            "6000" # was 6000 for whole genome build on Nextstrain
 MAX_SEQS =              "1000" # tree will be subsampled
@@ -23,7 +23,6 @@ GENBANK_PATH =          "resources/reference.gbk"
 AUSPICE_CONFIG =        "resources/auspice_config.json"
 EXCLUDE =               "resources/exclude.txt"
 CLADES =                "resources/clades.tsv"
-ACCESSION_STRAIN =      "resources/accession_strain.tsv"
 EXTRA_META =            "resources/meta_public.tsv"
 INCLUDE_EXAMPLES =      "resources/include_examples.txt"
 COLORS =                "resources/colors.tsv"
@@ -37,7 +36,7 @@ INFERRENCE_RERUN = False            # whether to rerun the inference of the ance
 
 INFERRED_SEQ_PATH = "results/sequences_with_ancestral.fasta" if STATIC_ANCESTRAL_INFERRENCE else SEQUENCES
 INFERRED_META_PATH = "results/metadata_with_ancestral.tsv" if STATIC_ANCESTRAL_INFERRENCE else "results/metadata.tsv"
-TREE = "results/output_tree.nwk" if not STAR_ROOT else "results/star_tree.nwk"
+TREE = "results/tree.nwk" if not STAR_ROOT else "results/star_tree.nwk"
 
 include: "scripts/workflow_messages.snkm"
 configfile: PATHOGEN_JSON
@@ -51,6 +50,14 @@ rule all:
         json = "out-dataset/pathogen.json",
         **({"root": INFERRED_ANCESTOR} if STATIC_ANCESTRAL_INFERRENCE else {})
 
+rule viz:
+    input: "results/auspice.json"
+    shell: "auspice view --datasetDir results"
+
+rule serve:
+    input: "out-dataset/pathogen.json","out-dataset/tree.json", "results/virus_properties.json"
+    params: "out-dataset"
+    shell: "serve --cors {params} -l 3000"
 
 rule testing:
     input:
@@ -80,7 +87,6 @@ rule curate:
         """
     input:
         meta = METADATA,  # Path to input metadata file
-        strains = ACCESSION_STRAIN,  # Strain - accession lookup table
         public = EXTRA_META,
     params:
         strain_id_field = ID_FIELD,
@@ -91,7 +97,7 @@ rule curate:
         metadata = "results/metadata.tsv",  # Final output file for publications metadata
     shell:
         """
-        augur merge --metadata metadata={input.meta} strains={input.strains} public={input.public}\
+        augur merge --metadata metadata={input.meta} public={input.public}\
             --metadata-id-columns {params.strain_id_field} \
             --output-metadata metadata.tmp
         
@@ -400,23 +406,23 @@ if STAR_ROOT==True:
     """
     rule star_like_rooting:
         input:
-            tree=ancient(rules.refine.output.tree),
-            clades="resources/clade_map.tsv", # TODO: the "clade_map" has to be downloaded from Nextstrain auspice metadata: 
-                                                # "accession\tclade" format - use a tree with all sequences if possible `df = df.loc[:,["accession", "clade_membership"]]`
-            recombinant_accessions="resources/recombinants.tsv",  # Format: "accession" (one per line, with header)
-            alignment=rules.exclude.output.filtered_sequences,
+            tree = ancient(rules.refine.output.tree),
+            clades = "resources/clades_metadata.tsv", # TODO: workflow must first be run with STAR_ROOT=False to generate clades_metadata.tsv
+            recombinant_accessions = "resources/recombinants.tsv",  # Format: "accession" (one per line, with header)
+            alignment = rules.exclude.output.filtered_sequences,
         output:
-            tree="results/star_tree.nwk",
-            node_data="results/branch_lengths.json",
+            tree = "results/star_tree.nwk",
+            node_data = "results/star_branch_lengths.json",
         params:
-            strain_id_field=ID_FIELD,
-            recombinant_clades = ["C2r", "C1-like","C2-like", "E", "F", "A", "C6"],
-            root_name="NODE_0000000"
+            strain_id_field = ID_FIELD,
+            root = ROOTING,
+            recombinant_clades = ["C2.2","C2.3", "C1.2","C1.3","D","E", "F","G", "A", "C6"],
+            root_name = "NODE_0000000"
         log:
             "logs/star_like_rooting.log"
         shell:
             """
-            python scripts/star_like_rooting.py \
+            python scripts/star_like_rooter.py \
                 --input_tree {input.tree} \
                 --input_clades {input.clades} \
                 --recombinant_accessions {input.recombinant_accessions} \
@@ -429,7 +435,7 @@ if STAR_ROOT==True:
             augur refine \
             --tree {output.tree} \
             --alignment {input.alignment} \
-            # --root {ROOTING} \ # root in star-like rooting script, use founder sequences
+            --root {ROOTING} \
             --keep-polytomies \
             --divergence-unit mutations-per-site \
             --output-node-data {output.node_data} \
@@ -479,6 +485,29 @@ rule clades:
             --clades {input.clades} \
             --output-node-data {output}
         """
+
+rule extract_clades_tsv:
+    input:
+        json=rules.clades.output.json,
+    output:
+        tsv = "results/clades_metadata.tsv"
+    run:
+        import json
+        import csv
+
+        with open(input.json) as f:
+            data = json.load(f)
+
+        nodes = data.get("nodes", {})
+
+        with open(output.tsv, "w", newline="") as out_f:
+            writer = csv.writer(out_f, delimiter="\t")
+            writer.writerow(["accession", "clade"])
+
+            for accession, values in nodes.items():
+                clade = values.get("clade_membership", None)
+                if clade:
+                    writer.writerow([accession, clade])
 
 # rule recombinant_clades:
 #     """
@@ -651,7 +680,7 @@ rule export:
         tree=TREE,
         metadata = rules.exclude.output.filtered_metadata,
         mutations = rules.ancestral.output.node_data,
-        branch_lengths = rules.refine.output.node_data,
+        branch_lengths = rules.star_like_rooting.output.node_data if STAR_ROOT else rules.refine.output.node_data,
         clades = rules.clades.output.json, # dummy_clades if not set yet
         auspice_config = AUSPICE_CONFIG,
         colors = rules.colors.output.final_colors,
@@ -676,28 +705,6 @@ rule export:
         """
         # {input.epitopes}
 
-rule extract_clades_tsv:
-    input:
-        json=rules.clades.output.json,
-    output:
-        tsv = "results/clades_metadata.tsv"
-    run:
-        import json
-        import csv
-
-        with open(input.json) as f:
-            data = json.load(f)
-
-        nodes = data.get("nodes", {})
-
-        with open(output.tsv, "w", newline="") as out_f:
-            writer = csv.writer(out_f, delimiter="\t")
-            writer.writerow(["accession", "clade"])
-
-            for accession, values in nodes.items():
-                clade = values.get("clade_membership", None)
-                if clade:
-                    writer.writerow([accession, clade])
 
 
 rule subsample_example_sequences:
