@@ -4,8 +4,8 @@ TAXON_ID =              39054
 GENES =                 ["VP4", "VP2", "VP3", "VP1", "2A", "2B", "2C", "3A", "3B", "3C", "3D"]
 ALLOWED_DIVERGENCE =    "2000" # was 
 MIN_DATE =              "1960-01-01"
-MIN_LENGTH =            "6000" # was 6000 for whole genome build on Nextstrain
-MAX_SEQS =              "1000" # tree will be subsampled
+MIN_LENGTH =            "6400" # was 6000 for whole genome build on Nextstrain
+MAX_SEQS =              "1200" # tree will be subsampled
 ROOTING =               "ancestral_sequence"  # mid_point, outgroup, reference, ancestral sequence
 ID_FIELD=               "accession" # either accession or strain, used for meta-id-column in augur
 
@@ -58,11 +58,6 @@ rule serve:
     input: "out-dataset/pathogen.json","out-dataset/tree.json", "results/virus_properties.json"
     params: "out-dataset"
     shell: "serve --cors {params} -l 3000"
-
-rule testing:
-    input:
-        "testing/EV-A71_fragments.fasta",
-        "testing/EV-A71_recombinants.fasta"
 
 
 if FETCH_SEQUENCES == True:
@@ -278,6 +273,7 @@ rule align:
         min_length = config["alignmentParams"]["minLength"],
         gap_alignment_side = config["alignmentParams"]["gapAlignmentSide"],  
         min_seed_cover = config["alignmentParams"]["minSeedCover"],
+        rev_complement = config["alignmentParams"]["retryReverseComplement"]
     shell:
         """
         nextclade3 run \
@@ -297,6 +293,7 @@ rule align:
         --allowed-mismatches {params.allowed_mismatches} \
         --min-seed-cover {params.min_seed_cover} \
         --min-length {params.min_length} \
+        --retry-reverse-complement true \
         --max-alignment-attempts 5 \
         --include-reference false \
         --output-tsv {output.tsv} \
@@ -404,7 +401,7 @@ if STAR_ROOT==True:
     """
     Rule to root the tree using a star-like rooting method.
     """
-    rule star_like_rooting:
+    rule star_root:
         input:
             tree = ancient(rules.refine.output.tree),
             clades = "resources/clades_metadata.tsv", # TODO: workflow must first be run with STAR_ROOT=False to generate clades_metadata.tsv
@@ -419,7 +416,7 @@ if STAR_ROOT==True:
             recombinant_clades = ["C2.2","C2.3", "C1.2","C1.3","D","E", "F","G", "A", "C6"],
             root_name = "NODE_0000000"
         log:
-            "logs/star_like_rooting.log"
+            "logs/star_root.log"
         shell:
             """
             python scripts/star_like_rooter.py \
@@ -509,54 +506,107 @@ rule extract_clades_tsv:
                 if clade:
                     writer.writerow([accession, clade])
 
-# rule recombinant_clades:
-#     """
-#     Mark accessions listed in resources/recombinants.tsv as 'recombinant' in the
-#     augur clades JSON produced by the clades rule. Writes a new clades JSON
-#     for downstream export.
-#     """
-#     input:
-#         clades=rules.clades.output,
-#         recombinants="resources/recombinants.tsv",  # one-column TSV or header+column
-#     output:
-#         node_data="results/clades_recombinant.json",
-#     run:
-#         import json
-#         import pandas as pd
-#         import os
+rule recombinant_clades:
+    """
+    Mark accessions listed in resources/recombinants.tsv as 'RFs' (recombinant forms) in
+    the augur clades JSON produced by the clades rule, and assign a display color to every
+    clade for downstream export - RFs is forced to grey rather than getting a color from
+    the ordinary palette.
+    """
+    input:
+        clades=rules.clades.output.json,
+        recombinants="resources/recombinants.tsv",  # one-column TSV or header+column
+        clade_order=CLADES,  # defines the canonical clade ordering used for color assignment
+        color_schemes=COLORS_SCHEMES,
+        colors = COLORS
+    output:
+        node_data="results/clades_recombinant.json",
+        colors="results/clade_colors.tsv",
+    params:
+        rfs_color="#a6acaf",  # grey, matches the "unassigned" grey used elsewhere in this pipeline
+    run:
+        import json
+        import pandas as pd
 
-#         # load recombinants (assume first column is accession)
-#         df = pd.read_csv(input.recombinants, sep="\t", dtype=str, header=0)
-#         recomb = set(df["accession"].to_list())
+        RFS_LABEL = "RFs"
 
-#         with open(input.clades[0], "r") as fh:
-#             clades = json.load(fh)
+        # load recombinants (assume first column is accession)
+        df = pd.read_csv(input.recombinants, sep="\t", dtype=str, header=0)
+        recomb = set(df["accession"].to_list())
 
-#         if not recomb:
-#             print("No recombinants loaded; writing input clades file unchanged.")
-#             with open(output.node_data, "w") as fh:
-#                 json.dump(clades, fh, indent=2)
-#             return
+        with open(input.clades, "r") as fh:
+            clades = json.load(fh)
 
-#         # clades JSON is expected to have structure {"nodes": {node_name: {...}, ...}, ...}
-#         nodes = clades.get("nodes", {})
-#         changed = 0
-#         missing = []
-#         for acc in sorted(recomb):
-#             if acc in nodes:
-#                 node = nodes[acc]
-#                 node["clade_membership"] = "recombinant"
-#                 node.pop("clade_annotation", None)
-#                 changed += 1
-#             else:
-#                 missing.append(acc)
+        # clades JSON is expected to have structure {"nodes": {node_name: {...}, ...}, ...}
+        nodes = clades.get("nodes", {})
+        changed = 0
+        missing = []
+        for acc in sorted(recomb):
+            if acc in nodes:
+                node = nodes[acc]
+                node["clade_membership"] = RFS_LABEL
+                node.pop("clade_annotation", None)
+                changed += 1
+            else:
+                missing.append(acc)
 
-#         print(f"Marked {changed} nodes as recombinant (from {len(recomb)} accessions provided).")
-#         if missing:
-#             print(f"{len(missing)} accessions not found in clades JSON; first few: {missing[:10]}")
+        print(f"Marked {changed} nodes as '{RFS_LABEL}' (from {len(recomb)} accessions provided).")
+        if missing:
+            print(f"{len(missing)} accessions not found in clades JSON; first few: {missing[:10]}")
 
-#         with open(output.node_data, "w") as fh:
-#             json.dump(clades, fh, indent=2)
+        with open(output.node_data, "w") as fh:
+            json.dump(clades, fh, indent=2)
+
+        # --- assign a color to every clade actually present in the tree, forcing RFs to grey ---
+
+        # canonical clade order, taken from the clade-defining mutations file so that
+        # colors stay stable across runs instead of shuffling alphabetically
+        ordered_clades = []
+        seen = set()
+        with open(input.clade_order) as fh:
+            for line in fh:
+                name = line.split("\t", 1)[0].strip()
+                if not name or name == "clade" or name in seen:
+                    continue
+                seen.add(name)
+                ordered_clades.append(name)
+
+        present_clades = {v.get("clade_membership") for v in nodes.values() if v.get("clade_membership")}
+        ordered_clades = [c for c in ordered_clades if c in present_clades]
+        for extra in sorted(present_clades - set(ordered_clades)):
+            ordered_clades.append(extra)
+
+        clades_to_color = [c for c in ordered_clades if c != RFS_LABEL]
+
+        # load the color palettes (one palette per line, line N holds N colors) - same
+        # convention as scripts/assign-colors.py
+        schemes = {}
+        with open(input.color_schemes) as fh:
+            for counter, line in enumerate(fh, start=1):
+                schemes[counter] = line.strip().split("\t")
+
+        n = len(clades_to_color)
+        if n == 0:
+            palette = []
+        elif n in schemes:
+            palette = schemes[n]
+        else:
+            print(f"WARNING: insufficient colours available for {n} clades - reusing colours!")
+            palette = []
+            remain = n
+            max_n = max(schemes)
+            while remain > 0:
+                take = min(remain, max_n)
+                palette += schemes[take]
+                remain -= take
+
+        clade_colors = dict(zip(clades_to_color, palette))
+        clade_colors[RFS_LABEL] = params.rfs_color
+        clade_colors["unassigned"] = params.rfs_color
+
+        with open(output.colors, "w") as fh:
+            for clade in ordered_clades:
+                fh.write(f"clade_membership\t{clade}\t{clade_colors[clade]}\n")
 
 
 rule get_dates:
@@ -596,13 +646,12 @@ rule epitopes:
     params:
         translation = "results/translations/cds_VP1.ancestral.fasta",
         epitopes = {
-        'BC':     list(range(95, 107)),         # Huang et al., 2015; Foo et al., 2008; structural mapping of neutralizing antibodies
-        'DE':     list(range(142, 152)),        # Liu et al., 2011; Zaini et al., 2012.
-        'EF':     list(range(165, 173)),        # Lyu et al., 2014; Wang et al., 2010.
-        'CTERM':  list(range(281, 291)),        # Chang et al., 2012 (monoclonal antibody studies), structural models.
-        'GH':     list(range(209, 224)),        # mutations at S215, K218 have been noted to impact neutralization. Often used in vaccine design (e.g., in VLPs or epitope grafting studies).      
-        'Esc_CHN':[283, 293]},                  # Escape Mutations in C-Terminal in Chinese Samples
-        min_count = 6 # number of sequences?
+        'BC':     list(range(97, 106)),         # Lyu et al. 2015 (JVI); Crystal structures (PDB:3VBS)
+        'EF':     list(range(163, 178)),        # Foo et al. 2007; Lyu et al. 2015; Known as SP55 epitope
+        'GH':     list(range(208, 223)),        # Foo et al. 2007; Lyu et al. 2015; Known as SP70 epitope; 100% conserved   
+        'Esc_CHN':[283, 293],                   # Escape Mutations in C-Terminal in Chinese Samples
+        'CTERM':  list(range(240, 266))},       # Both ranges appear in Lyu et al. (2015) and JVI crystal structure papers
+        min_count = 3 # number of sequences?
     run:
         import json
         from collections import defaultdict
@@ -644,7 +693,7 @@ rule epitopes:
 
         for node in nodes:
             for epi,seq in nodes[node].items():
-                min_count2 = params.min_count if epi != "CTERM" else 6
+                min_count2 = params.min_count if epi != "CTERM" else 8
                 if epi == "CTERM" and seq in manyXList:
                     nodes[node][epi]='many X'
                 elif epitope_counts[epi][seq]<min_count2:#params.min_count:
@@ -659,7 +708,7 @@ rule colors:
     input:
         ordering=rules.get_dates.output.ordering,
         color_schemes=COLORS_SCHEMES,
-        colors=COLORS,
+        colors=rules.recombinant_clades.output.colors,
     output:
         colors="results/colors_dates.tsv",
         final_colors="results/final_colors.tsv"
@@ -680,13 +729,13 @@ rule export:
         tree=TREE,
         metadata = rules.exclude.output.filtered_metadata,
         mutations = rules.ancestral.output.node_data,
-        branch_lengths = rules.star_like_rooting.output.node_data if STAR_ROOT else rules.refine.output.node_data,
-        clades = rules.clades.output.json, # dummy_clades if not set yet
+        branch_lengths = rules.star_root.output.node_data if STAR_ROOT else rules.refine.output.node_data,
+        clades = "results/clades_recombinant.json", # dummy_clades if not set yet
         auspice_config = AUSPICE_CONFIG,
         colors = rules.colors.output.final_colors,
+        clade_colors = rules.recombinant_clades.output.colors,
         epitopes = rules.epitopes.output.node_data,
         lat_long = "resources/lat_longs.tsv",
-        # recombinants = rules.recombinant_clades.output.node_data
     params:
         strain_id_field = ID_FIELD,
     output:
@@ -699,12 +748,10 @@ rule export:
             --metadata-id-columns {params.strain_id_field} \
             --auspice-config {input.auspice_config} \
             --lat-longs {input.lat_long} \
-            --node-data {input.mutations} {input.branch_lengths} {input.clades}  \
-            --colors {input.colors} \
+            --node-data {input.mutations} {input.branch_lengths} {input.clades} {input.epitopes} \
+            --colors <(sed -s -e '$a\\' {input.colors} {input.clade_colors}) \
             --output {output.auspice}
         """
-        # {input.epitopes}
-
 
 
 rule subsample_example_sequences:
@@ -775,21 +822,6 @@ rule assemble_dataset:
         zip -rj dataset.zip  out-dataset/*
         """
 
-
-rule test:
-    input:
-        dataset = rules.assemble_dataset.output.dataset_zip,
-        sequences = rules.assemble_dataset.output.sequences,
-    output:
-        output = directory("test_out"),
-    shell:
-        """
-        nextclade3 run \
-            --input-dataset {input.dataset} \
-            --output-all {output.output} \
-            {input.sequences}
-        """
-
 rule mutLabels:
     input:
         table = "results/nextclade.tsv",
@@ -828,117 +860,79 @@ rule mutLabels:
         zip -rj dataset.zip  out-dataset/*
         """
 
-rule fragment_testing:
+rule test:
     input:
-        nextstrain = "testing/nextstrain_a71_vp1.tsv",
-        sequences = "results/aligned.fasta",
+        dataset = rules.assemble_dataset.output.dataset_zip,    # output dataset
+        sequences = SEQUENCES,                                  # NCBI sequences
+        ex_sequences = rules.assemble_dataset.output.sequences, # example sequences
+        metadata = "resources/clades_metadata.tsv",       # metadata downloaded from Nextstrain, needed for accession id check
+        clades = rules.extract_clades_tsv.output.tsv,           # Table containing clades and accession
+        non_As = "testing/non-EV-A_sequence.fasta",             # List of some non-EV-A viruses
+        EV_As = "testing/EV_A.fasta" if os.path.exists("testing/EV_A.fasta") else [],   # or we do a Entrez with the taxonid
+        reference = REFERENCE_PATH,
+        tree = "out-dataset/tree.json"
     output:
-        fragments = "testing/EV-A71_fragments.fasta"
+        output = directory("test_out"),
     params:
-        length = range(100, 3000, 100),  # lengths from 200 to 3000
-        gene = ["VP1", "3D"]  # genes to sample from; atm only VP1 and 3D supported
-    run:
-        import os
-        import random
-        from Bio import SeqIO
-        import pandas as pd
-
-        # Read all sequences from the input file
-        records = list(SeqIO.parse(input.sequences, "fasta"))
-        os.makedirs(os.path.dirname(output.fragments), exist_ok=True)
-
-        # filter records in nextstrain file
-        ns_ids = list(pd.read_csv(input.nextstrain).accession)
-        records = [r for r in records if r.id in ns_ids]
-
-        with open(output.fragments, "w") as out_handle:
-            for length in params.length:
-                record = random.choice(records)
-                seq_len = len(record.seq)
-                if "VP1" in params.gene or "3D" in params.gene:
-                    if "VP1" in params.gene: 
-                        seq1 = record.seq[2389:3315]
-                        l = len(seq1) - seq1.count("-") - seq1.count("N")
-                        if l > length:
-                            s = random.randint(0, l - length)
-                            seq1 = seq1[s:s+length]
-                            header = f"{record.id}_partial_{length}_VP1"
-                            out_handle.write(f">{header}\n{seq1}\n")
-                    if "3D" in params.gene:
-                        seq2 = record.seq[5926:7296]
-                        l = len(seq2)
-                        if l > length:
-                            s = random.randint(0, l - length)
-                            seq2 = seq2[s:s+length]
-                            header = f"{record.id}_partial_{length}_3D"
-                            out_handle.write(f">{header}\n{seq2}\n")
-                else: 
-                    print(f"Gene {params.gene} not recognized.")
-                        
-                while seq_len < length:
-                    record = random.choice(records)
-                    seq_len = len(record.seq)
-                start = random.randint(0, seq_len - length)
-                fragment_seq = record.seq[start:start+length]
-                header = f"{record.id}_partial_{length}"
-                out_handle.write(f">{header}\n{fragment_seq}\n")
-
-
-rule recombinant_testing:
-    input:
-        sequences = SEQUENCES,
-        nextstrain = "testing/nextstrain_a71_vp1.tsv",
-        clades = "results/clades_metadata.tsv",
-        evD_seq = "testing/EV-D_sequence.fasta"
-    output:
-        recombinants = "testing/EV-A71_recombinants.fasta"
-    params:
-        inter_recombinants = 10,
-        intra_recombinants = 10,
-        min_length = 3500,
-    run:
-        import random
-        from Bio import SeqIO
-        import pandas as pd
-
-        def eligible(records, ml):
-            return [r for r in records if len(r) >= ml]
-
-        # Load sequences and filter by Nextstrain IDs & min_length
-        seqs = list(SeqIO.parse(input.sequences, "fasta"))
-        ns_ids = list(pd.read_csv(input.nextstrain, sep="\t").accession)
+        do_alignment = "False",                                 # set to True to test the alignment of fragments (will run mafft on the fragments and reference)
+        seed = 42,                                              # random seed number
+        species_taxid = "138948",                               # EV-A taxonid
+        seedCover = config["alignmentParams"]["minSeedCover"],  # min-seed-match
+        virus = config["attributes"]["name"],                   # virus name
+        abbrev = "EV-A71",
+        fragment_genes = ["VP1", "3D"]                          # currently only genes supported
+    log:
+        "test_out/test.log"
+    shell:
+        """
+        mkdir -p {output.output}
         
-        seqs = eligible([r for r in seqs if r.id in ns_ids], params.min_length)
+        # Generate test sequences
+        python scripts/generate_test_sequences.py \
+            --sequences {input.sequences} \
+            --metadata {input.metadata} \
+            --clades {input.clades} \
+            --evA {input.EV_As} \
+            --taxid {params.species_taxid}\
+            --virus "{params.virus}"\
+            --output-fragments {output.output}/fragments.fasta \
+            --output-recombinants {output.output}/recombinants.fasta \
+            --output-evA {output.output}/EV_A_fetched.fasta \
+            --seed {params.seed} 
+        
+        # Use provided EV_As if available, else use fetched
+        if [ -f "{input.EV_As}" ]; then
+            EV_A_FILE="{input.EV_As}"
+        else
+            EV_A_FILE="{output.output}/EV_A_fetched.fasta"
+        fi
+        
+        # Combine all test sequences
+        cat {input.sequences} {input.ex_sequences} \
+            {output.output}/fragments.fasta \
+            {output.output}/recombinants.fasta \
+            {input.non_As} \
+            "$EV_A_FILE" > {output.output}/all_test_sequences.fasta
+        
+        # Run Nextclade
+        time nextclade3 run \
+            --input-dataset {input.dataset} \
+            --output-all {output.output} \
+            {output.output}/all_test_sequences.fasta \
+            2>&1 | tee -a {log}
+        
+        # Parse results
+        python scripts/parse_nextclade_log.py {log} {output.output}/all_test_sequences.fasta \
+            {output.output}/nextclade.tsv {output.output} "{params.virus}" {input.tree} \
+            {params.abbrev}
+        
+        echo "Running with min-seed-cover: {params.seedCover}"
 
-        # Map clade assignments
-        clade_map = pd.read_csv(input.clades, sep="\t").set_index("accession")["clade"].to_dict()
-        clade2seqs = {}
-        for r in seqs:
-            clade = clade_map.get(r.id, "NA")
-            clade2seqs.setdefault(clade, []).append(r)
-        clades = [c for c in clade2seqs if c != "NA" and len(clade2seqs[c]) > 0]
-
-        # EV-D sequences for intertypic recombination
-        evd = eligible(list(SeqIO.parse(input.evD_seq, "fasta")), params.min_length)
-
-        with open(output.recombinants, "w") as out:
-            # Intra-typic: between clades
-            for i in range(params.intra_recombinants):
-                c1, c2 = random.sample(clades, 2)
-                p1, p2 = random.choice(clade2seqs[c1]), random.choice(clade2seqs[c2])
-                minlen = min(len(p1.seq), len(p2.seq))
-                if minlen < params.min_length: continue
-                x = random.randint(1, minlen-1)
-                out.write(f">intra_{p1.id}_{c1}_{x}_{p2.id}_{c2}\n{p1.seq[:x]}{p2.seq[x:]}\n")
-
-            # Inter-typic: A71 x EV-D
-            for i in range(params.inter_recombinants):
-                p1 = random.choice(seqs)
-                p2 = random.choice(evd)
-                minlen = min(len(p1.seq), len(p2.seq))
-                if minlen < params.min_length: continue
-                x = random.randint(1, minlen-1)
-                out.write(f">inter_{p1.id}_A71_{x}_{p2.id}_D\n{p1.seq[:x]}{p2.seq[x:]}\n")
+        # Optional: align failed sequences with MAFFT
+        if [ "{params.do_alignment}" = "True" ]; then
+            mafft --thread 9 --addfragments {output.output}/failed_sequences.fasta {input.reference} > {output.output}/failed_sequences_aligned.fasta
+        fi
+        """
 
 rule clean:
     shell:
