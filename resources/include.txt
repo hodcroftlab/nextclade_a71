@@ -1,3 +1,5 @@
+U22521 # reference BrCr
+
 JX025561
 
 # root

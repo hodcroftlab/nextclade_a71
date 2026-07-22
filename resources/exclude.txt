@@ -1,6 +1,6 @@
 # BRcR references - genotype A
 JN874547
-U22521
+#U22521
 AB204852
 JQ766159
 AB204853

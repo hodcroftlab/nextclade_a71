@@ -1,6 +1,5 @@
 KP289419 # high diversity
 LC506516 # Lab strain: A sequence (probably CVA16)
-#U22521 # reference BrCr
 KX871578 #VP1 sequence
 JN835312 #mediocre; mixed sites
 KJ686275 # good; C4
@@ -39,3 +38,5 @@ PP548275
 # # vaccine strains
 # MK307344
 # HQ328793
+
+HM807310 # partly identical (2C-3D) with BrCr
