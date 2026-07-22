@@ -1,36 +1,40 @@
 {
   "title": "Enterovirus A71 - Nextclade dataset tree",
-  "build_url": "https://github.com/hodcroftlab/nextclade_a71",
+  "build_url": "https://github.com/enterovirus-phylo/nextclade_a16",
   "maintainers": [
     {
       "name": "Nadia Neuner-Jehle",
-      "url": "https://www.swisstph.ch/en/staff/profile/people/nadia-neuner-jehle"
+      "url": "https://eve-lab.org/people/nadia-neuner-jehle/"
+    },
+    {
+      "name": "Alejandra González-Sánchez",
+      "url": "https://www.vallhebron.com/en/professionals/alejandra-gonzalez-sanchez"
     },
     {
       "name": "Emma Hodcroft",
-      "url": "http://emmahodcroft.com/"
+      "url": "https://eve-lab.org/people/emma-hodcroft/"
     }
-  ],
-  "extensions": {
+  ],  
+    "extensions": {
     "nextclade": {
       "ref_nodes": {
         "default": "__root__",
         "builtins": {
           "__root__": {
-            "displayName": "Reference [U22521.1]",
-            "description": "BrCr strain, complete cds"
+            "displayName": "Static Inferred Ancestor",
+            "description": "Precomputed ancestral sequence (static)"
           }
         },
         "search": [
           {
-            "name": "InferredAncestor",
-            "displayName": "Static Inferred Ancestor",
-            "description": "Precomputed ancestral sequence (static)",
+            "name": "Prototype",
+            "displayName": "Reference [U22521.1]",
+            "description": "Enterovirus A71, strain BrCr",
             "criteria": [
               {
                 "node": [
                   {
-                    "name": ["ancestral_sequence"]
+                    "name": ["U22521"]
                   }
                 ]
               }
@@ -105,7 +109,7 @@
       "type": "categorical",
       "key": "RIVM"
     }
-    ],
+  ],
   "geo_resolutions": [
     "country", "region"
   ],
@@ -121,10 +125,9 @@
     "branch_label": "clade",
     "map_triplicate": true
   },
-  "metadata_columns": [
-    "strain"
-  ],
   "panels": [
-    "tree"
+    "tree",
+    "map",
+    "entropy"
   ]
 }
