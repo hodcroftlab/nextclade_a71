@@ -58,9 +58,9 @@ C1.2	nuc	1533	A
 C1.2	nuc	3719	G
 C1.2	nuc	3920	T
 
-C1.3	nuc	1811	T
-C1.3	nuc	2696	G
+C1.3	nuc	2798	G
 C1.3	nuc	3758	T
+C1.3	nuc	5888	T
 
 C4	nuc	505	C
 C4	nuc	1331	A
@@ -96,5 +96,6 @@ D	nuc	2171	C
 D	nuc	3143	C
 D	nuc	4022	G
 
-RFs	nuc	742	A
-RFs	nuc	3313	C
+RFs	nuc	3875	A
+RFs	nuc	4865	G
+RFs	nuc	5489	T

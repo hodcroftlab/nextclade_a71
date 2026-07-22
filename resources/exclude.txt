@@ -309,3 +309,6 @@ PV684179
 
 PV684191
 PV684190
+
+# exact same seq as PP548279. Duplicate?
+PP548275
