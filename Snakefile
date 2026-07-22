@@ -17,7 +17,7 @@ GFF_PATH =              "dataset/genome_annotation.gff3"
 PATHOGEN_JSON =         "dataset/pathogen.json"
 README_PATH =           "dataset/README.md"
 CHANGELOG_PATH =        "dataset/CHANGELOG.md"
-REFERENCE_PATH =        "resources/inferred-root.fasta"
+REFERENCE_PATH =        "dataset/reference.fasta"
 
 GENBANK_PATH =          "resources/reference.gbk"
 AUSPICE_CONFIG =        "resources/auspice_config.json"
@@ -145,6 +145,7 @@ if STATIC_ANCESTRAL_INFERRENCE and INFERRENCE_RERUN:
             inref = INFERRED_ANCESTOR,
             seq = INFERRED_SEQ_PATH,
             meta = INFERRED_META_PATH,
+            ref_path = REFERENCE_PATH
         threads: workflow.cores
         shell:
             r"""
@@ -166,6 +167,8 @@ if STATIC_ANCESTRAL_INFERRENCE and INFERRENCE_RERUN:
                 --metadata metadata={input.meta} ancestral={input.meta_ancestral} \
                 --metadata-id-columns {params.strain_id_field} \
                 --output-metadata {output.meta}
+
+            cp {output.inref} {output.ref_path}
 
             echo "Static ancestral inference completed successfully!"
             """
@@ -459,13 +462,12 @@ rule ancestral:
             --tree {input.tree} \
             --alignment {input.alignment} \
             --annotation {input.annotation} \
-            --root-sequence {input.annotation} \
             --genes {params.genes} \
             --translations {params.translation_template} \
             --output-node-data {output.node_data} \
             --output-translations {params.output_translation_template}\
             --output-sequences {output.ancestral_sequences}
-        """
+        """ #            --root-sequence {input.annotation} \
 
 
 rule clades:

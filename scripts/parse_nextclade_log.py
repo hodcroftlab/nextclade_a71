@@ -42,6 +42,83 @@ def parse_nextclade_log(log_file):
     
     return failed_sequences, coverage_pcts
 
+def extract_qualifying_sequences_table(log_file):
+    """
+    Build a table of failed sequences worth reviewing manually:
+      - sequences whose name contains a pipe ('ACCESSION | Virus'): accession, virus, seed cover
+      - sequences without a pipe but with 'partial', 'inter_' or 'intra_' in the name:
+        fragment length (partial) or breakpoint + recombination partner (inter/intra)
+
+    Returns a list of dicts with keys:
+        accession, category, virus_or_partner, length_or_breakpoint, seed_cover_pct
+    """
+    warn_pattern = re.compile(r"In sequence #\d+ '([^']+)'.*?covers ([\d.]+)% of the query sequence")
+
+    rows = []
+    with open(log_file) as f:
+        for line in f:
+            if "[W]" not in line or "Unable to align" not in line:
+                continue
+            match = warn_pattern.search(line)
+            if not match:
+                continue
+            full_id, coverage = match.group(1), match.group(2)
+
+            if '|' in full_id:
+                accession, virus = (part.strip() for part in full_id.split('|', 1))
+                rows.append({
+                    'accession': accession,
+                    'category': 'named',
+                    'virus_or_partner': virus,
+                    'length_or_breakpoint': '',
+                    'seed_cover_pct': coverage,
+                })
+            elif '_partial_' in full_id:
+                accession, rest = full_id.split('_partial_', 1)
+                length = rest.split('_')[0]
+                rows.append({
+                    'accession': accession,
+                    'category': 'partial',
+                    'virus_or_partner': '',
+                    'length_or_breakpoint': f"{length} bp",
+                    'seed_cover_pct': coverage,
+                })
+            elif full_id.startswith('inter_') or full_id.startswith('intra_'):
+                tokens = full_id.split('_')
+                rec_type, p1_id, breakpoint, p2_id = tokens[0], tokens[1], tokens[3], tokens[4]
+                partner_virus = '_'.join(tokens[5:])
+                rows.append({
+                    'accession': p1_id,
+                    'category': rec_type,
+                    'virus_or_partner': f"{p2_id} ({partner_virus})" if partner_virus else p2_id,
+                    'length_or_breakpoint': f"breakpoint @ {breakpoint}",
+                    'seed_cover_pct': coverage,
+                })
+            # everything else (no pipe, no partial/inter/intra) is skipped
+
+    return rows
+
+def write_qualifying_sequences_table(rows, output_dir):
+    """
+    Write the qualifying sequences table as a Markdown file (pastable into Notion).
+    """
+    output_dir = Path(output_dir)
+    table_path = output_dir / "qualifying_sequences_table.md"
+
+    header = ["Accession", "Category", "Virus / Recombination partner", "Length / Breakpoint", "Seed cover (%)"]
+
+    with open(table_path, 'w') as f:
+        f.write("| " + " | ".join(header) + " |\n")
+        f.write("|" + "|".join(["---"] * len(header)) + "|\n")
+        for row in rows:
+            f.write(
+                f"| {row['accession']} | {row['category']} | {row['virus_or_partner']} | "
+                f"{row['length_or_breakpoint']} | {row['seed_cover_pct']} |\n"
+            )
+
+    print(f"Qualifying sequences table saved to: {table_path}\n")
+    return table_path
+
 def write_failed_sequences_fasta(failed_sequences, fasta_file, output_dir):
     """
     Write all failed sequences to a new FASTA file.
@@ -424,3 +501,6 @@ if __name__ == "__main__":
     qc_status = dict(zip(df['seqName'], df['qc.overallStatus'].fillna('failed')))
 
     summarize_results(failed_seqs, coverage_vals, total_seqs, seq_lengths, qc_status, fasta_file, output_dir)
+
+    qualifying_rows = extract_qualifying_sequences_table(log_file)
+    write_qualifying_sequences_table(qualifying_rows, output_dir)
