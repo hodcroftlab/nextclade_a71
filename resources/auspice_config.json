@@ -75,6 +75,31 @@
       "type": "categorical",
       "key": "region"
     },
+        {
+      "title": "Epitope at BC loop [97-105]",
+      "type": "categorical",
+      "key": "BC"
+    },
+    {
+      "key": "GH",
+      "title": "Epitope at GH loop [208-222]",
+      "type": "categorical"
+    },
+    {
+      "key": "EF",
+      "title": "Epitope at EF loop [163-177]",
+      "type": "categorical"
+    },
+    {
+      "title": "Epitope at C terminus [240-265]",
+      "type": "categorical",
+      "key": "CTERM"
+    },
+    {
+      "title": "Surface C terminus [283,293]",
+      "type": "categorical",
+      "key": "Esc_CHN"
+    },
     {
       "title": "RIVM Clades",
       "type": "categorical",
