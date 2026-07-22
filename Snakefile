@@ -448,6 +448,7 @@ rule ancestral:
         tree=TREE,
         alignment=rules.exclude.output.filtered_sequences,
         annotation=GENBANK_PATH,
+        ref = REFERENCE_PATH,
     output:
         node_data="results/muts.json",
         ancestral_sequences="results/ancestral_sequences.fasta",
@@ -455,7 +456,6 @@ rule ancestral:
         translation_template=r"results/translations/cds_%GENE.translation.fasta",
         output_translation_template=r"results/translations/cds_%GENE.ancestral.fasta",
         genes=" ".join(GENES),
-        root = "results/ancestral_sequences_star.fasta" if "{STAR_ROOT}"==True else "results/ancestral_sequences.fasta",
     shell:
         """
         augur ancestral \
@@ -465,10 +465,10 @@ rule ancestral:
             --genes {params.genes} \
             --translations {params.translation_template} \
             --output-node-data {output.node_data} \
+            --root-sequence {input.ref} \
             --output-translations {params.output_translation_template}\
             --output-sequences {output.ancestral_sequences}
-        """ #            --root-sequence {input.annotation} \
-
+        """
 
 rule clades:
     input:
