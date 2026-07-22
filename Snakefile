@@ -17,7 +17,7 @@ GFF_PATH =              "dataset/genome_annotation.gff3"
 PATHOGEN_JSON =         "dataset/pathogen.json"
 README_PATH =           "dataset/README.md"
 CHANGELOG_PATH =        "dataset/CHANGELOG.md"
-REFERENCE_PATH =        "dataset/reference.fasta"
+REFERENCE_PATH =        "resources/inferred-root.fasta"
 
 GENBANK_PATH =          "resources/reference.gbk"
 AUSPICE_CONFIG =        "resources/auspice_config.json"
@@ -820,12 +820,12 @@ rule assemble_dataset:
         cp {input.readme} {output.readme}
         cp {input.changelog} {output.changelog}
         zip -rj dataset.zip  out-dataset/*
-        """
+        """ 
 
 rule mutLabels:
     input:
-        table = "results/nextclade.tsv",
-        clade = "results/clades_metadata.tsv",
+        table = rules.align.output.tsv,
+        clade = rules.extract_clades_tsv.output.tsv,
         json = PATHOGEN_JSON,
     params:
         min_proportion = 0.2,
@@ -835,7 +835,8 @@ rule mutLabels:
     output:
         clade_meta = "results/clades_mut_metadata.tsv",
         properties = "results/virus_properties.json",
-        json = "out-dataset/pathogen.json"
+        json = "out-dataset/pathogen.json",
+        newly_relevant = "results/newly_relevant_mutations.tsv",
     shell:
         """
         augur merge \
@@ -849,12 +850,11 @@ rule mutLabels:
             --min-prop {params.min_proportion} \
             --high-min-prop {params.high_threshold_proportion} \
             --high-prop-clades "{params.clades_high_threshold}" \
-            --exclude-clades "{params.clades_to_drop}"
-
+            --exclude-clades "{params.clades_to_drop}" \
+            --newly-relevant-output {output.newly_relevant}
 
         jq --slurpfile v {output.properties} \
-           '.mutLabels.nucMutLabelMap = $v[0].nucMutLabelMap |
-            .mutLabels.nucMutLabelMapReverse = $v[0].nucMutLabelMapReverse' \
+           '.mutLabels.nucMutLabelMap = $v[0].nucMutLabelMap' \
            {input.json} > {output.json}
 
         zip -rj dataset.zip  out-dataset/*
