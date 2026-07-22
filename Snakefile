@@ -518,7 +518,6 @@ rule recombinant_clades:
     input:
         clades=rules.clades.output.json,
         recombinants="resources/recombinants.tsv",  # one-column TSV or header+column
-        clade_order=CLADES,  # defines the canonical clade ordering used for color assignment
         color_schemes=COLORS_SCHEMES,
         colors = COLORS
     output:
@@ -561,24 +560,9 @@ rule recombinant_clades:
 
         # --- assign a color to every clade actually present in the tree, forcing RFs to grey ---
 
-        # canonical clade order, taken from the clade-defining mutations file so that
-        # colors stay stable across runs instead of shuffling alphabetically
-        ordered_clades = []
-        seen = set()
-        with open(input.clade_order) as fh:
-            for line in fh:
-                name = line.split("\t", 1)[0].strip()
-                if not name or name == "clade" or name in seen:
-                    continue
-                seen.add(name)
-                ordered_clades.append(name)
-
         present_clades = {v.get("clade_membership") for v in nodes.values() if v.get("clade_membership")}
-        ordered_clades = [c for c in ordered_clades if c in present_clades]
-        for extra in sorted(present_clades - set(ordered_clades)):
-            ordered_clades.append(extra)
-
-        clades_to_color = [c for c in ordered_clades if c != RFS_LABEL]
+        clades_to_color = sorted(present_clades - {RFS_LABEL})
+        ordered_clades = clades_to_color + ([RFS_LABEL] if RFS_LABEL in present_clades else [])
 
         # load the color palettes (one palette per line, line N holds N colors) - same
         # convention as scripts/assign-colors.py
@@ -708,6 +692,7 @@ rule epitopes:
 rule colors:
     """Assign colors based on ordering"""
     input:
+        countries = COLORS,
         ordering=rules.get_dates.output.ordering,
         color_schemes=COLORS_SCHEMES,
         colors=rules.recombinant_clades.output.colors,
@@ -723,7 +708,7 @@ rule colors:
 
         echo -e '\ndate\tXXXX-XX-XX\t#a6acaf' >> {output.colors}
 
-        cat {output.colors} {input.colors} >> {output.final_colors}
+        cat {input.countries} {output.colors} {input.colors} >> {output.final_colors}
         """
 
 rule export: 
@@ -751,7 +736,7 @@ rule export:
             --auspice-config {input.auspice_config} \
             --lat-longs {input.lat_long} \
             --node-data {input.mutations} {input.branch_lengths} {input.clades} {input.epitopes} \
-            --colors <(sed -s -e '$a\\' {input.colors} {input.clade_colors}) \
+            --colors {input.colors} \
             --output {output.auspice}
         """
 
@@ -832,7 +817,7 @@ rule mutLabels:
     params:
         min_proportion = 0.2,
         high_threshold_proportion = 0.70,
-        clades_high_threshold = ["A","B1","B2","B3","C1", "C2","C3","C4"],
+        clades_high_threshold = ["A","B1","B2","B3", "B4","C1", "C1.3", "C2","C3","C4"],
         clades_to_drop = ["unassigned"],
     output:
         clade_meta = "results/clades_mut_metadata.tsv",

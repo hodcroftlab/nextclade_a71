@@ -103,11 +103,6 @@
       "title": "Surface C terminus [283,293]",
       "type": "categorical",
       "key": "Esc_CHN"
-    },
-    {
-      "title": "RIVM Clades",
-      "type": "categorical",
-      "key": "RIVM"
     }
   ],
   "geo_resolutions": [
