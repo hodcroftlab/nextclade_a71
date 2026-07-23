@@ -23,7 +23,6 @@ This dataset supports:
 
 - Assignment of subgenotypes
 - Phylogenetic placement
-- Mutation Calling
 - Sequence quality control (QC)
 
 ## Subgenotypes of Enterovirus A71
@@ -38,13 +37,11 @@ The clade definitions in this dataset are based on phylogenetic structure and ch
 
 ## Related Enteroviruses
 
-EV-A71 is closely related to other EV-A viruses, including CVA16, CVA7, and EV-A120. If your sequences may contain multiple EV-A types, we recommend using "[Multiple Datasets](https://docs.nextstrain.org/projects/nextclade/en/stable/user/nextclade-web/getting-started.html#multi-dataset-mode)" mode rather than selecting only the EV-A71 dataset.
+EV-A71 is closely related to other EV-A viruses, including CVA16, CVA7, and EV-A120. If your sequences may contain multiple EV-A types, we recommend using the [Multiple Datasets](https://docs.nextstrain.org/projects/nextclade/en/stable/user/nextclade-web/getting-started.html#multi-dataset-mode) mode rather than selecting only the EV-A71 dataset.
 
 This allows Nextclade to select the most appropriate dataset instead of forcing all sequences onto the EV-A71 reference tree. For example, CVA16 sequences may still align and receive a clade assignment (often near recombinant forms).
 
-Short genomic regions (particularly the 5'UTR) should be interpreted with caution. These regions are highly conserved among EV-A viruses and therefore often lack sufficient phylogenetic signal for reliable typing or subgenotype assignment.
-
-In addition, enteroviruses recombine frequently. Analyses based on a single genomic region may therefore miss recombination events and produce misleading evolutionary assignments.
+Please be cautious when working with short genes or fragments (e.g., 5'UTR sequences). These regions can be highly conserved across EV-A viruses, making genogroup and subgenogroup assignment prone to errors. In addition, such fragments may originate from recombinant genomes. Recombination is common in enteroviruses, and when analyzing only a fragment, this may go undetected.
 
 If you are unsure how to proceed, please contact us. We are happy to assist.
 
