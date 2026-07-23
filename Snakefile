@@ -817,7 +817,7 @@ rule mutLabels:
     params:
         min_proportion = 0.2,
         high_threshold_proportion = 0.70,
-        clades_high_threshold = ["A","B1","B2","B3", "B4","C1", "C1.3", "C2","C3","C4"],
+        clades_high_threshold = ["C4","B5","C1.3","C2","C1","B1","B4"], # Sorted from most to least abundant (n>20)
         clades_to_drop = ["unassigned"],
     output:
         clade_meta = "results/clades_mut_metadata.tsv",
