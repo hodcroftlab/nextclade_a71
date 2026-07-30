@@ -136,6 +136,25 @@ def write_failed_sequences_fasta(failed_sequences, fasta_file, output_dir):
     SeqIO.write(failed_records, output_fasta, "fasta")
     print(f"Failed sequences written to: {output_fasta}\n")
 
+def write_sequences_by_qc_status(qc_status, status, fasta_file, output_dir):
+    """
+    Write all sequences with a given QC overall status (e.g. 'mediocre', 'bad')
+    to their own FASTA file, regardless of whether they failed alignment.
+    """
+    output_dir = Path(output_dir)
+    output_fasta = output_dir / f"{status}_sequences.fasta"
+
+    matching_records = []
+    for record in SeqIO.parse(fasta_file, "fasta"):
+        # qc_status keys can be either the seq id or the full description
+        seq_status = qc_status.get(record.id, qc_status.get(record.description))
+        if seq_status == status:
+            matching_records.append(record)
+
+    SeqIO.write(matching_records, output_fasta, "fasta")
+    print(f"{len(matching_records)} '{status}' sequences written to: {output_fasta}\n")
+    return output_fasta
+
 def categorize_test_sequences(failed_sequences, fasta_file, qc_status):
     """
     Categorize sequences into: EV, non-EV-A, fragments, inter-recombinants, intra-recombinants.
@@ -349,15 +368,19 @@ def summarize_results(failed_sequences, coverage_pcts, total_sequences, seq_leng
         print(f"  {status:10}: {count:5} ({pct:5.1f}%)")
     
     print(f"{'='*60}\n")
-    
+
     # Test sequence analysis
     test_results = categorize_test_sequences(failed_sequences, fasta_file, qc_status)
     print_test_summary(test_results, output_dir)
     plot_test_qc_distribution(test_results, output_dir)
-    
+
     # Write failed sequences to FASTA
     write_failed_sequences_fasta(failed_sequences, fasta_file, output_dir)
-    
+
+    # Write mediocre- and bad-QC sequences (across all sequences, not just failed ones) to their own FASTA files
+    write_sequences_by_qc_status(qc_status, 'mediocre', fasta_file, output_dir)
+    write_sequences_by_qc_status(qc_status, 'bad', fasta_file, output_dir)
+
     # Histograms
     if coverage_pcts:
         fig, axes = plt.subplots(2, 2, figsize=(14, 10))

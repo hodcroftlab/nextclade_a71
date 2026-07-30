@@ -59,7 +59,7 @@
     "privateMutations": {
       "enabled": true,
       "cutoff": 150,
-      "typical": 20,
+      "typical": 60,
       "weightLabeledSubstitutions": 1.5,
       "weightReversionSubstitutions": 2,
       "weightUnlabeledSubstitutions": 1
@@ -71,7 +71,7 @@
     "snpClusters": {
       "enabled": true,
       "windowSize": 100,
-      "clusterCutOff": 4,
+      "clusterCutOff": 5,
       "scoreWeight": 25
     }
   },

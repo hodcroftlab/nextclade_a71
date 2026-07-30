@@ -138,58 +138,105 @@ def eligible_seqs(records, min_length):
     """Filter records by minimum length."""
     return [r for r in records if len(r) >= min_length]
 
-def generate_fragments(sequences_file, metadata_file, clades_file, output_file, 
-                       lengths=None, genes=None):
+def parse_gff_gene_coords(gff_file):
+    """Parse gene/CDS coordinates from a GFF3 file into 0-based half-open (start, end) tuples."""
+    gene_coords = {}
+    if not gff_file or not gff_file.exists():
+        return gene_coords
+    with open(gff_file) as gff:
+        for line in gff:
+            if line.startswith("#"):
+                continue
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 9 or parts[2] not in ("gene", "CDS"):
+                continue
+            start, end, attributes = parts[3], parts[4], parts[8]
+            attrs = dict(item.split("=", 1) for item in attributes.split(";") if "=" in item)
+            gene_name = attrs.get("Name") or attrs.get("gene") or attrs.get("ID")
+            if gene_name:
+                gene_coords[gene_name] = (int(start) - 1, int(end))
+    return gene_coords
+
+
+def random_ungapped_fragment(seq, length):
+    """Return a random subsequence of `length` non-gap/N bases, or None if `seq` is too short."""
+    ungapped_len = len(seq) - seq.count("-") - seq.count("N")
+    if ungapped_len <= length:
+        return None
+    start = random.randint(0, ungapped_len - length)
+    return seq[start:start + length]
+
+
+def generate_fragments(sequences_file, rivm_file, clades_file, nextstrain_file ,output_file,
+                       lengths=None, genes=None, gff_file=None):
     """Generate fragment test sequences."""
     if lengths is None:
         lengths = range(100, 3100, 100)
     if genes is None:
         genes = ["VP1", "3D"]
-    
+
+    gene_coords = parse_gff_gene_coords(gff_file)
+
     # Read all sequences from the input file
     records = list(SeqIO.parse(sequences_file, "fasta"))
 
-    # filter records in metadata file
-    metadata_df = pd.read_csv(metadata_file, sep="\t")
-    meta_ids = set(metadata_df["accession"] if "accession" in metadata_df.columns else metadata_df.iloc[:, 0])
+    # Read Nextstrain Clades
+    nextstrain_df = pd.read_csv(nextstrain_file, sep="\t")
+    meta_ids = set(nextstrain_df["accession"] if "accession" in nextstrain_df.columns else nextstrain_df.iloc[:, 0])
     records = [r for r in records if r.id in meta_ids]
 
-    clade_map = pd.read_csv(clades_file, sep="\t").set_index("accession")["clade"].to_dict()
-    
+    ns_map = nextstrain_df.set_index("accession")["clade_membership"].to_dict()
+
+    # filter records NOT in clades file
+    acc = pd.read_csv(clades_file, sep="\t").accession
+    records = [r for r in records if r.id not in acc]
+
+    rivm_map = {}
+    if rivm_file:
+        rivm = pd.read_csv(rivm_file, sep=",")
+        if "acccession" in rivm and "RIVM"  in rivm:
+            rivm_map = rivm.set_index("accession")["RIVM"].to_dict()
+        elif "name" in rivm:
+            rivm_map = rivm.set_index("name")["VP1 subgenogroup"].to_dict()
+        else: print("neither accession nor name in ", rivm_file,". Please check!")
+
+    # Most records are already partial (e.g. VP1-only), so only keep, per gene,
+    # the records long enough to actually contain that gene's coordinates.
+    gene_records = {
+        gene: [r for r in records if len(r.seq) >= end]
+        for gene, (start, end) in gene_coords.items()
+    }
+
     with open(output_file, "w") as out_handle:
         for length in lengths:
+            for gene in genes:
+                if gene not in gene_coords:
+                    print(f"Gene {gene} not found in GFF3 annotation, skipping.", file=sys.stderr)
+                    continue
+                eligible = gene_records[gene]
+                if not eligible:
+                    continue
+                record = random.choice(eligible)
+                start, end = gene_coords[gene]
+                fragment = random_ungapped_fragment(record.seq[start:end], length)
+                if fragment is not None:
+                    cl = rivm_map.get(record.id, "NA")
+                    ns = ns_map.get(record.id, "NA")
+                    header = f"{record.id}_partial_{length}_{gene}|{ns}|{cl}"
+                    out_handle.write(f">{header}\n{fragment}\n")
+
             record = random.choice(records)
             seq_len = len(record.seq)
-            cl = clade_map.get(record.id, "NA")
-            
-            if "VP1" in genes or "3D" in genes:
-                if "VP1" in genes:
-                    seq1 = record.seq[2389:3315]
-                    l = len(seq1) - seq1.count("-") - seq1.count("N")
-                    if l > length:
-                        s = random.randint(0, l - length)
-                        seq1 = seq1[s:s+length]
-                        header = f"{record.id}_partial_{length}_VP1_{cl}"
-                        out_handle.write(f">{header}\n{seq1}\n")
-                if "3D" in genes:
-                    seq2 = record.seq[5926:7296]
-                    l = len(seq2) - seq2.count("-") - seq2.count("N")
-                    if l > length:
-                        s = random.randint(0, l - length)
-                        seq2 = seq2[s:s+length]
-                        header = f"{record.id}_partial_{length}_3D_{cl}"
-                        out_handle.write(f">{header}\n{seq2}\n")
-            else:
-                print(f"Gene {genes} not recognized.")
-            
             while seq_len < length:
                 record = random.choice(records)
                 seq_len = len(record.seq)
+            cl = rivm_map.get(record.id, "NA")
+            ns = ns_map.get(record.id, "NA")
             start = random.randint(0, seq_len - length)
             fragment_seq = record.seq[start:start+length]
-            header = f"{record.id}_partial_{length}_{cl}"
+            header = f"{record.id}_partial_{length}|{ns}|{cl}"
             out_handle.write(f">{header}\n{fragment_seq}\n")
-    
+
     return sum(1 for line in open(output_file) if line.startswith(">"))
 
 def generate_recombinants(sequences_file, metadata, clades_file, evA_file, 
@@ -247,8 +294,9 @@ def generate_recombinants(sequences_file, metadata, clades_file, evA_file,
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate test sequences")
     parser.add_argument("--sequences", required=True, help="Input sequences file")
-    parser.add_argument("--metadata", required=True, help="Metadata TSV")
+    parser.add_argument("--nextstrain", required=True, help="Nextstrain metadata TSV")
     parser.add_argument("--clades", required=True, help="Clades metadata TSV")
+    parser.add_argument("--rivm", required=False, help = "RIVM Clade Assignment")
     parser.add_argument("--output-fragments", required=True, help="Output fragments FASTA")
     parser.add_argument("--output-recombinants", required=True, help="Output recombinants FASTA")
     parser.add_argument("--output-evA", required=False, help="Output EV-A sequences FASTA (if fetching from NCBI)")
@@ -288,8 +336,16 @@ if __name__ == "__main__":
     else:
         print("Error: Either --evA file or --taxid must be provided", file=sys.stderr)
         sys.exit(1)
-    
-    n_frags = generate_fragments(args.sequences, args.metadata, args.clades, args.output_fragments, args.genes)
-    n_recomb = generate_recombinants(args.sequences, args.metadata, args.clades, eva_file, args.output_recombinants)
+
+    gff_file = Path("dataset/genome_annotation.gff3")
+
+    if args.rivm:
+        rivm = Path(args.rivm)
+    else:
+        rivm = None
+
+    n_frags = generate_fragments(args.sequences, rivm, args.clades,args.nextstrain, args.output_fragments,
+                                  genes=args.genes, gff_file=gff_file)
+    n_recomb = generate_recombinants(args.sequences, args.nextstrain, args.clades, eva_file, args.output_recombinants)
     
     print(f"Generated {n_frags} fragments and {n_recomb} recombinants")

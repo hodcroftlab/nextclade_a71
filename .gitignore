@@ -37,3 +37,7 @@ config.yaml
 
 # tidy tree testing files
 tidy-tree/*
+
+#testing
+testing/extract_fasta_from_accession.ipynb
+testing/missing_RIVM.fasta

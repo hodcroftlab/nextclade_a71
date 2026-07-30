@@ -8,6 +8,7 @@ MIN_LENGTH =            "6400" # was 6000 for whole genome build on Nextstrain
 MAX_SEQS =              "1200" # tree will be subsampled
 ROOTING =               "ancestral_sequence"  # mid_point, outgroup, reference, ancestral sequence
 ID_FIELD=               "accession" # either accession or strain, used for meta-id-column in augur
+RECOMBINANT_CLADES =    ["C2.2","C2.3", "C1.2","C1.3","D","E", "F","G", "A", "C6"]  # clades treated as recombinant forms (RFs)
 
 # Set the paths
 SEQUENCES =             "data/sequences.fasta"
@@ -416,7 +417,7 @@ if STAR_ROOT==True:
         params:
             strain_id_field = ID_FIELD,
             root = ROOTING,
-            recombinant_clades = ["C2.2","C2.3", "C1.2","C1.3","D","E", "F","G", "A", "C6"],
+            recombinant_clades = RECOMBINANT_CLADES,
             root_name = "NODE_0000000"
         log:
             "logs/star_root.log"
@@ -852,8 +853,9 @@ rule test:
         dataset = rules.assemble_dataset.output.dataset_zip,    # output dataset
         sequences = SEQUENCES,                                  # NCBI sequences
         ex_sequences = rules.assemble_dataset.output.sequences, # example sequences
-        metadata = "resources/clades_metadata.tsv",       # metadata downloaded from Nextstrain, needed for accession id check
-        clades = rules.extract_clades_tsv.output.tsv,           # Table containing clades and accession
+        nextstrain = "testing/nextstrain_vp1_metadata.tsv",     # Nextstrain VP1 assignment
+        clades = "results/clades_metadata.tsv",                 # Table containing clades and accession
+        RIVM = "resources/subgenotypes_rivm.csv",               # RIVM clade assignment
         non_As = "testing/non-EV-A_sequence.fasta",             # List of some non-EV-A viruses
         EV_As = "testing/EV_A.fasta" if os.path.exists("testing/EV_A.fasta") else [],   # or we do a Entrez with the taxonid
         reference = REFERENCE_PATH,
@@ -877,7 +879,8 @@ rule test:
         # Generate test sequences
         python scripts/generate_test_sequences.py \
             --sequences {input.sequences} \
-            --metadata {input.metadata} \
+            --rivm {input.RIVM} \
+            --nextstrain {input.nextstrain} \
             --clades {input.clades} \
             --evA {input.EV_As} \
             --taxid {params.species_taxid}\
@@ -902,11 +905,13 @@ rule test:
             "$EV_A_FILE" > {output.output}/all_test_sequences.fasta
         
         # Run Nextclade
+        echo "\nRunning Nextclade3 on all test sequences..."
         time nextclade3 run \
             --input-dataset {input.dataset} \
             --output-all {output.output} \
             {output.output}/all_test_sequences.fasta \
-            2>&1 | tee -a {log}
+            > {log} 2>&1
+        echo "\nNextclade3 run completed. Log written to {log}."
         
         # Parse results
         python scripts/parse_nextclade_log.py {log} {output.output}/all_test_sequences.fasta \
@@ -920,6 +925,37 @@ rule test:
             mafft --thread 9 --addfragments {output.output}/failed_sequences.fasta {input.reference} > {output.output}/failed_sequences_aligned.fasta
         fi
         """
+
+## Test clade assignment
+rule test_clades:
+    input:
+        dataset = rules.assemble_dataset.output.dataset_zip,
+        fragments = "test_out/fragments.fasta",
+        rivm_results = "testing/rivm_results.csv",
+    output:
+        report = "test_out/clade_assignment_report.tsv",
+        summary = "test_out/clade_assignment_summary.tsv"
+    params:
+        recombinant_clades = ",".join(RECOMBINANT_CLADES)
+    log:
+        "test_out/clade_assignment.log"
+    shell:
+        """
+        mkdir -p test_out/clade_assignment_results
+
+        time nextclade3 run \
+            --input-dataset {input.dataset} \
+            --output-all test_out/clade_assignment_results \
+            {input.fragments} > {log} 2>&1
+
+        python scripts/compare_clade_assignments.py \
+            test_out/clade_assignment_results/nextclade.tsv \
+            {input.rivm_results} \
+            {output.report} \
+            "{params.recombinant_clades}" \
+            {output.summary}
+        """
+
 
 rule clean:
     shell:
