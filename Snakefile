@@ -909,8 +909,12 @@ rule test:
             RELATED_FILE="{output.output}/related_species_fetched.fasta"
         fi
 
+        # Filter input sequences to >100 nt, then randomly subsample to 10,000
+        seqkit seq -m 101 {input.sequences} \
+            | seqkit sample -n 10000 -s {params.seed} > {output.output}/sequences_subset.fasta
+
         # Combine all test sequences
-        cat {input.sequences} \
+        cat {output.output}/sequences_subset.fasta \
             {output.output}/fragments.fasta \
             {output.output}/recombinants.fasta \
             {input.non_targets} \
