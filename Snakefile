@@ -910,7 +910,7 @@ rule test:
         fi
 
         # Combine all test sequences
-        cat {input.sequences} {input.ex_sequences} \
+        cat {input.sequences} \
             {output.output}/fragments.fasta \
             {output.output}/recombinants.fasta \
             {input.non_targets} \
