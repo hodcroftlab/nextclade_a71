@@ -182,8 +182,6 @@ def categorize_test_sequences(failed_sequences, fasta_file, qc_status, virus_nam
     for record in SeqIO.parse(fasta_file, "fasta"):
         all_seqs[record.id] = record.description
 
-    print(related_patterns)
-
     for seq_id in all_seqs:
         description = all_seqs[seq_id]
 
@@ -194,14 +192,14 @@ def categorize_test_sequences(failed_sequences, fasta_file, qc_status, virus_nam
             categories['intra_recombinants'].append(seq_id)
         elif '_partial_' in seq_id:  # Fragments
             categories['fragments'].append(seq_id)
-        elif related_label in description or related_patterns and any(p in description for p in related_patterns):
+        elif related_label in description or related_patterns and any(p in description for p in related_patterns) or re.sub(r'\d+', '', virus_name).lower() in description.lower():
             if virus_name not in description and short_name not in description:
                 categories[related_label].append(seq_id)
         elif '|' in description:  # Non-target species (has pipe symbol)
             categories[f'non-{related_label}'].append(seq_id)
         else:  # Target species
             categories[short_name].append(seq_id)
-    
+
     # Count failures per category
     results = {}
     for cat_name, seq_list in categories.items():
