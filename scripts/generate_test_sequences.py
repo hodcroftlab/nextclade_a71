@@ -1,6 +1,6 @@
 # scripts/generate_test_sequences.py
 """
-Generate all test sequences: fragments, recombinants, non-EV-A controls.
+Generate all test sequences: fragments, recombinants, non-EV species controls.
 """
 import random
 import argparse
@@ -19,7 +19,7 @@ def fetch_sequences_from_entrez(taxid, virus_name, num_seqs=5, email=None, api_k
     
     Args:
         taxid: NCBI taxonomy ID for the species group
-        virus_name: Name of the dataset virus to exclude (e.g., "CVA16", "EV-A71")
+        virus_name: Name of the dataset virus to exclude (e.g., "EV-D68", "EV-D71")
         num_seqs: Number of sequences to fetch (default 5)
         email: Email for NCBI Entrez access
         api_key: Optional NCBI API key for faster access
@@ -50,15 +50,23 @@ def fetch_sequences_from_entrez(taxid, virus_name, num_seqs=5, email=None, api_k
     )
     
     try:
+        # First, find out how many records match so we don't silently truncate
+        # the pool: esearch's default ordering is newest-submission-first, so a
+        # small retmax can bury rarer/older serotypes behind hundreds of recent
+        # accessions and they'd never be sampled at all.
+        count_handle = Entrez.esearch(db="nucleotide", term=search_term, retmax=0)
+        total_count = int(Entrez.read(count_handle)["Count"])
+        count_handle.close()
+
         handle = Entrez.esearch(
             db="nucleotide",
             term=search_term,
-            retmax=100,  # Get more results to filter
+            retmax=max(total_count, 1),  # fetch the full matching set, not just the newest 100
             idtype="acc"
         )
         record = Entrez.read(handle)
         handle.close()
-        
+
         if not record["IdList"]:
             print(f"No complete sequences found for taxid {taxid}", file=sys.stderr)
             return []
@@ -93,8 +101,12 @@ def fetch_sequences_from_entrez(taxid, virus_name, num_seqs=5, email=None, api_k
                 # Extract virus info from description or organism
                 organism = seq_record.annotations.get("organism", "")
                 description = seq_record.description.upper()
-                virus_short = seq_record.annotations.get("source",organism)
-                virus_short = virus_short.split("(")[1].split(")")[0]
+                virus_short = seq_record.annotations.get("source", organism)
+                # source is often formatted like "enterovirus D68 (EV-D68)" - prefer the
+                # parenthetical short name when present, otherwise use it as-is (many
+                # records, e.g. generic "Enterovirus D", have no parenthetical at all)
+                if "(" in virus_short and ")" in virus_short:
+                    virus_short = virus_short.split("(")[1].split(")")[0]
 
                 # Skip if we've already fetched this virus species
                 if organism in seen_viruses:
@@ -194,7 +206,8 @@ def generate_fragments(sequences_file, rivm_file, clades_file, nextstrain_file ,
     rivm_map = {}
     if rivm_file:
         rivm = pd.read_csv(rivm_file, sep=",")
-        if "acccession" in rivm and "RIVM"  in rivm:
+        rivm.dropna(axis=0, inplace=True)
+        if "accession" in rivm:
             rivm_map = rivm.set_index("accession")["RIVM"].to_dict()
         elif "name" in rivm:
             rivm_map = rivm.set_index("name")["VP1 subgenogroup"].to_dict()
@@ -239,7 +252,7 @@ def generate_fragments(sequences_file, rivm_file, clades_file, nextstrain_file ,
 
     return sum(1 for line in open(output_file) if line.startswith(">"))
 
-def generate_recombinants(sequences_file, metadata, clades_file, evA_file, 
+def generate_recombinants(sequences_file, metadata, clades_file, ev_file, 
                           output_file, inter_count=10, intra_count=10, min_length=3500):
     """Generate inter- and intra-recombinant test sequences."""
     seqs = list(SeqIO.parse(sequences_file, "fasta"))
@@ -254,7 +267,7 @@ def generate_recombinants(sequences_file, metadata, clades_file, evA_file,
             clade2seqs.setdefault(clade, []).append(r)
     
     clades = [c for c in clade2seqs if len(clade2seqs[c]) > 0]
-    evA_seqs = eligible_seqs(list(SeqIO.parse(evA_file, "fasta")), min_length)
+    ev_seqs = eligible_seqs(list(SeqIO.parse(ev_file, "fasta")), min_length)
     
     recombinants = []
     
@@ -272,15 +285,15 @@ def generate_recombinants(sequences_file, metadata, clades_file, evA_file,
         recomb_seq = str(p1.seq[:breakpoint]) + str(p2.seq[breakpoint:])
         recombinants.append((header, recomb_seq))
     
-    # Inter-typic recombinants (e.g., virus x EV-A)
+    # Inter-typic recombinants (target virus x related species)
     for j in range(inter_count):
         p1 = random.choice(seqs)
-        p2 = random.choice(evA_seqs)
+        p2 = random.choice(ev_seqs)
         minlen = min(len(p1.seq), len(p2.seq))
         if minlen < min_length:
             continue
         breakpoint = random.randint(1, minlen - 1)
-        header = f"inter_{p1.id}_A16_{breakpoint}_{p2.id}_{p2.description.split('|')[1].strip()}"
+        header = f"inter_{p1.id}_ virus_{breakpoint}_{p2.id}_{p2.description.split('|')[1].strip()}"
         recomb_seq = str(p1.seq[:breakpoint]) + str(p2.seq[breakpoint:])
         recombinants.append((header, recomb_seq))
     
@@ -299,10 +312,10 @@ if __name__ == "__main__":
     parser.add_argument("--rivm", required=False, help = "RIVM Clade Assignment")
     parser.add_argument("--output-fragments", required=True, help="Output fragments FASTA")
     parser.add_argument("--output-recombinants", required=True, help="Output recombinants FASTA")
-    parser.add_argument("--output-evA", required=False, help="Output EV-A sequences FASTA (if fetching from NCBI)")
+    parser.add_argument("--output-ev", required=False, help="Output EV species sequences FASTA (if fetching from NCBI)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--evA", required=False, help="EV-A sequences file (skip Entrez if provided)")
-    parser.add_argument("--taxid", type=str, required=False, help="NCBI Taxon ID for EV-A (if not provided as file)")
+    parser.add_argument("--ev", required=False, help="EV species sequences file (skip Entrez if provided)")
+    parser.add_argument("--taxid", type=str, required=False, help="NCBI Taxon ID for EV species (if not provided as file)")
     parser.add_argument("--virus", type=str, required=False, default="EV", help="Name of dataset virus to exclude from Entrez fetch")
     parser.add_argument("--genes", required=False, nargs='+', default=None, help="Genes for which fragments are created")
     parser.add_argument("--email", required=False, help="Email for NCBI Entrez access")
@@ -313,12 +326,12 @@ if __name__ == "__main__":
     Path(args.output_fragments).parent.mkdir(parents=True, exist_ok=True)
     Path(args.output_recombinants).parent.mkdir(parents=True, exist_ok=True)
 
-    # Handle EV-A sequences: either use provided file or fetch from NCBI
-    if args.evA:
-        eva_file = args.evA
-        print(f"Using provided EV-A file: {eva_file}", file=sys.stderr)
+    # Handle EV species sequences: either use provided file or fetch from NCBI
+    if args.ev:
+        ev_file = args.ev
+        print(f"Using provided EV species file: {ev_file}", file=sys.stderr)
     elif args.taxid:
-        eva_file = args.output_evA or Path(args.output_fragments).parent / "EV_A_fetched.fasta"
+        ev_file = args.output_ev or Path(args.output_fragments).parent / "EV_fetched.fasta"
         fetched = fetch_sequences_from_entrez(
             args.taxid,
             args.virus,
@@ -328,13 +341,13 @@ if __name__ == "__main__":
         )
         
         if fetched:
-            num_eva = write_entrez_sequences(fetched, eva_file)
-            print(f"Fetched and saved {num_eva} EV-A sequences to {eva_file}", file=sys.stderr)
+            num_ev = write_entrez_sequences(fetched, ev_file)
+            print(f"Fetched and saved {num_ev} EV species sequences to {ev_file}", file=sys.stderr)
         else:
-            print("Failed to fetch EV-A sequences, skipping recombinant generation", file=sys.stderr)
-            eva_file = None
+            print("Failed to fetch EV species sequences, skipping recombinant generation", file=sys.stderr)
+            ev_file = None
     else:
-        print("Error: Either --evA file or --taxid must be provided", file=sys.stderr)
+        print("Error: Either --ev file or --taxid must be provided", file=sys.stderr)
         sys.exit(1)
 
     gff_file = Path("dataset/genome_annotation.gff3")
@@ -346,6 +359,6 @@ if __name__ == "__main__":
 
     n_frags = generate_fragments(args.sequences, rivm, args.clades,args.nextstrain, args.output_fragments,
                                   genes=args.genes, gff_file=gff_file)
-    n_recomb = generate_recombinants(args.sequences, args.nextstrain, args.clades, eva_file, args.output_recombinants)
+    n_recomb = generate_recombinants(args.sequences, args.nextstrain, args.clades, ev_file, args.output_recombinants)
     
     print(f"Generated {n_frags} fragments and {n_recomb} recombinants")

@@ -155,25 +155,35 @@ def write_sequences_by_qc_status(qc_status, status, fasta_file, output_dir):
     print(f"{len(matching_records)} '{status}' sequences written to: {output_fasta}\n")
     return output_fasta
 
-def categorize_test_sequences(failed_sequences, fasta_file, qc_status):
+def categorize_test_sequences(failed_sequences, fasta_file, qc_status, virus_name, short_name,
+                               related_label=None, related_patterns=None):
     """
-    Categorize sequences into: EV, non-EV-A, fragments, inter-recombinants, intra-recombinants.
+    Categorize sequences into: target species, non-target species, fragments,
+    inter-recombinants, intra-recombinants, and (optionally) a separately-flagged
+    closely related species.
+
+    related_label/related_patterns let callers break out one closely related species
+    (e.g. a common source of recombination confusion) into its own bucket instead of
+    lumping it into the generic non-target-species bucket. Both are optional.
+
     Returns failure counts and QC stats for each category.
     """
     categories = {
         short_name: [],
-        'non_EV_A': [],
-        'EV_A': [],
+        related_label: [],
+        f'non-{related_label}': [],
         'fragments': [],
         'inter_recombinants': [],
         'intra_recombinants': []
     }
-    
+      
     # Read all sequences and categorize them
     all_seqs = {}
     for record in SeqIO.parse(fasta_file, "fasta"):
         all_seqs[record.id] = record.description
-    
+
+    print(related_patterns)
+
     for seq_id in all_seqs:
         description = all_seqs[seq_id]
 
@@ -184,12 +194,12 @@ def categorize_test_sequences(failed_sequences, fasta_file, qc_status):
             categories['intra_recombinants'].append(seq_id)
         elif '_partial_' in seq_id:  # Fragments
             categories['fragments'].append(seq_id)
-        elif 'EV-A' in description or 'CVA' in description:  # EV-A sequences (but not EV)
+        elif related_label in description or related_patterns and any(p in description for p in related_patterns):
             if virus_name not in description and short_name not in description:
-                categories['EV_A'].append(seq_id)
-        elif '|' in description:  # Non-EV (has pipe symbol)
-            categories['non_EV_A'].append(seq_id)
-        else:  # EV
+                categories[related_label].append(seq_id)
+        elif '|' in description:  # Non-target species (has pipe symbol)
+            categories[f'non-{related_label}'].append(seq_id)
+        else:  # Target species
             categories[short_name].append(seq_id)
     
     # Count failures per category
@@ -310,7 +320,8 @@ def plot_test_qc_distribution(test_results, output_dir):
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     print(f"Test QC distribution plot saved to: {plot_path}\n")
 
-def summarize_results(failed_sequences, coverage_pcts, total_sequences, seq_lengths, qc_status, fasta_file, output_dir):
+def summarize_results(failed_sequences, coverage_pcts, total_sequences, seq_lengths, qc_status, fasta_file, output_dir,
+                       virus_name, short_name, related_label=None, related_patterns=None):
     """
     Print summary stats and generate histograms.
     """
@@ -370,7 +381,8 @@ def summarize_results(failed_sequences, coverage_pcts, total_sequences, seq_leng
     print(f"{'='*60}\n")
 
     # Test sequence analysis
-    test_results = categorize_test_sequences(failed_sequences, fasta_file, qc_status)
+    test_results = categorize_test_sequences(failed_sequences, fasta_file, qc_status,
+                                               virus_name, short_name, related_label, related_patterns)
     print_test_summary(test_results, output_dir)
     plot_test_qc_distribution(test_results, output_dir)
 
@@ -495,16 +507,30 @@ def extract_mutation_stats_from_tree(tree_file):
     return typical, cutoff
 
 if __name__ == "__main__":
-    import sys
+    import argparse
     import pandas as pd
 
-    log_file = sys.argv[1] if len(sys.argv) > 1 else "test_out/test.log"
-    fasta_file = sys.argv[2] if len(sys.argv) > 2 else "data/sequences.fasta"
-    tsv_file = sys.argv[3] if len(sys.argv) > 3 else "test_out/nextclade.tsv"
-    output_dir = sys.argv[4] if len(sys.argv) > 4 else "test_out"
-    virus_name = sys.argv[5] if len(sys.argv) > 5 else "Enterovirus"
-    tree_file = sys.argv[6] if len(sys.argv) > 6 else "out-dataset/tree.json"
-    short_name = sys.argv[7] if len(sys.argv) > 7 else "EV"
+    parser = argparse.ArgumentParser(description="Parse Nextclade log to extract failed sequences and seed alignment coverage stats")
+    parser.add_argument("--log-file", default="test_out/test.log", help="Nextclade run log file")
+    parser.add_argument("--fasta-file", default="data/sequences.fasta", help="FASTA file of all sequences that were run")
+    parser.add_argument("--tsv-file", default="test_out/nextclade.tsv", help="Nextclade TSV output")
+    parser.add_argument("--output-dir", default="test_out", help="Directory to write summary outputs to")
+    parser.add_argument("--virus-name", default="Enterovirus", help="Full name of the target virus (e.g. 'Enterovirus D68')")
+    parser.add_argument("--tree-file", default="out-dataset/tree.json", help="Dataset tree.json used to derive private-mutation stats")
+    parser.add_argument("--short-name", default="EV", help="Short abbreviation of the target virus (e.g. 'EV-D68')")
+    parser.add_argument("--related-label", default=None, help="Optional label for a closely related species to flag separately (e.g. 'EV-A')")
+    parser.add_argument("--related-patterns", default=None, help="Comma-separated substrings identifying --related-label in sequence descriptions (e.g. 'EV-A,CVA')")
+    args = parser.parse_args()
+
+    log_file = args.log_file
+    fasta_file = args.fasta_file
+    tsv_file = args.tsv_file
+    output_dir = args.output_dir
+    virus_name = args.virus_name
+    tree_file = args.tree_file
+    short_name = args.short_name
+    related_label = args.related_label or None
+    related_patterns = [p.strip() for p in args.related_patterns.split(",") if p.strip()] if args.related_patterns else None
 
     # Extract mutation statistics from tree
     typical, cutoff = extract_mutation_stats_from_tree(tree_file)
@@ -523,7 +549,8 @@ if __name__ == "__main__":
     df = pd.read_csv(tsv_file, sep='\t', low_memory=False)
     qc_status = dict(zip(df['seqName'], df['qc.overallStatus'].fillna('failed')))
 
-    summarize_results(failed_seqs, coverage_vals, total_seqs, seq_lengths, qc_status, fasta_file, output_dir)
+    summarize_results(failed_seqs, coverage_vals, total_seqs, seq_lengths, qc_status, fasta_file, output_dir,
+                       virus_name, short_name, related_label, related_patterns)
 
     qualifying_rows = extract_qualifying_sequences_table(log_file)
     write_qualifying_sequences_table(qualifying_rows, output_dir)
