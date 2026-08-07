@@ -18,7 +18,8 @@
     "extensions": {
     "nextclade": {
       "ref_nodes": {
-        "default": "__root__",
+        "default": "BrCr",
+        "order": { "entries": ["BrCr"] },
         "builtins": {
           "__root__": {
             "displayName": "Static Inferred Ancestor",
@@ -27,7 +28,7 @@
         },
         "search": [
           {
-            "name": "Prototype",
+            "name": "BrCr",
             "displayName": "Reference [U22521.1]",
             "description": "Enterovirus A71, strain BrCr",
             "criteria": [

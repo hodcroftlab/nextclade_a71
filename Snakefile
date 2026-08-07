@@ -58,7 +58,7 @@ rule all:
         augur_jsons = "test_out/",
         data = "dataset.zip",
         seqs = "results/example_sequences.fasta",
-        json = "out-dataset/pathogen.json",
+        json = "results/virus_properties.json",
         **({"root": INFERRED_ANCESTOR} if STATIC_ANCESTRAL_INFERRENCE else {})
 
 rule viz:
@@ -370,8 +370,15 @@ rule exclude:
             --metadata-id-columns {params.strain_id_field} \
             --exclude {input.exclude} {input.outliers} {input.example} \
             --output-sequences {output.filtered_sequences} \
-            --output-metadata {output.filtered_metadata} \
+            --output-metadata tmp.o \
             --output-strains {output.strains}
+
+        csvtk mutate2 -t \
+          -n url \
+          -e '"https://www.ncbi.nlm.nih.gov/nuccore/" + ${params.strain_id_field:q}' \
+          tmp.o > {output.filtered_metadata:q}
+          
+        rm tmp.o   
         """
 
 rule tree:
@@ -911,7 +918,7 @@ rule test:
 
         # Filter input sequences to >100 nt, then randomly subsample to 10,000
         seqkit seq -m 101 {input.sequences} \
-            | seqkit sample -n 10000 -s {params.seed} > {output.output}/sequences_subset.fasta
+            | seqkit sample -n 5000 -s {params.seed} > {output.output}/sequences_subset.fasta
 
         # Combine all test sequences
         cat {output.output}/sequences_subset.fasta \
