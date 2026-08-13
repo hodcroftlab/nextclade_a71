@@ -121,6 +121,9 @@
     "branch_label": "clade",
     "map_triplicate": true
   },
+  "metadata_columns": [
+    "strain"
+  ],
   "panels": [
     "tree",
     "map",
