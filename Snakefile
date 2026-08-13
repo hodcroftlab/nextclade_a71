@@ -25,6 +25,7 @@ AUSPICE_CONFIG =        "resources/auspice_config.json"
 EXCLUDE =               "resources/exclude.txt"
 CLADES =                "resources/clades.tsv"
 EXTRA_META =            "resources/meta_public.tsv"
+GENBANK_META =          "resources/genbank_metadata.tsv"
 INCLUDE_EXAMPLES =      "resources/include_examples.txt"
 COLORS =                "resources/colors.tsv"
 COLORS_SCHEMES =        "resources/color_schemes.tsv"
@@ -94,6 +95,7 @@ rule curate:
     input:
         meta = METADATA,  # Path to input metadata file
         public = EXTRA_META,
+        genbank = GENBANK_META
     params:
         strain_id_field = ID_FIELD,
         date_format = ['%Y-%m-%d','%Y','XX-%m-%Y','%Y-%m-%dT%H:%M:%SZ','201X-XX-XX', 
@@ -103,7 +105,7 @@ rule curate:
         metadata = "results/metadata.tsv",  # Final output file for publications metadata
     shell:
         """
-        augur merge --metadata metadata={input.meta} public={input.public}\
+        augur merge --metadata metadata={input.meta} public={input.public} genbank={input.genbank} \
             --metadata-id-columns {params.strain_id_field} \
             --output-metadata metadata.tmp
         
@@ -783,11 +785,11 @@ rule subsample_example_sequences:
             --metadata metadata.tmp \
             --metadata-id-columns {params.strain_id_field} \
             --min-date 2010 --group-by clade \
-            --subsample-max-sequences 30  \
+            --subsample-max-sequences 20  \
             --min-length 4000 \
             --include {input.incl_examples} \
             --exclude {input.exclude} {input.outliers} \
-            --exclude-where "clade=E" "clade=F" "clade=A" \
+            --exclude-where "clade=D" "clade=E" "clade=F" "clade=G" "clade=A" "clade=C1.2" "clade=C2.3" "clade=RFs" "clade=C5" \
             --exclude-ambiguous-dates-by year \
             --probabilistic-sampling \
             --output-sequences {output.example_sequences}
@@ -832,6 +834,7 @@ rule mutLabels:
         table = rules.align.output.tsv,
         clade = rules.extract_clades_tsv.output.tsv,
         json = PATHOGEN_JSON,
+        dataset = rules.assemble_dataset.output.dataset_zip,
     params:
         min_proportion = 0.2,
         high_threshold_proportion = 0.70,
@@ -876,7 +879,8 @@ rule test:
         non_targets = NON_TARGET_SEQUENCES,                      # sequences from other species (negative controls)
         related_species = RELATED_SPECIES_FASTA if os.path.exists(RELATED_SPECIES_FASTA) else [],  # or we do a Entrez with the taxonid
         reference = REFERENCE_PATH,
-        tree = "out-dataset/tree.json"
+        tree = "out-dataset/tree.json",
+        properties = "results/virus_properties.json",
     output:
         output = directory("test_out"),
     params:

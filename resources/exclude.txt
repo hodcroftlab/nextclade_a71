@@ -28,6 +28,8 @@ PP855530
 KP289419
 MG367593
 
+KC954664
+
 # too long; GPF included (Lab strain)
 AB469183
 
@@ -312,3 +314,22 @@ PV684190
 
 # exact same seq as PP548279. Duplicate?
 PP548275
+
+# same patient, 5 samples
+#EU414331 #day0
+EU414332
+EU414333
+EU414334
+EU414335
+
+## duplicated sequences (from Nextstrain build: deduplicate.py output)
+MK904809
+AB747373
+AB482183
+EU376004
+EU376005
+JN992284
+JN992282
+AB550334
+JN992283
+AB204853
