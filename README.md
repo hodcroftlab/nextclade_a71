@@ -3,6 +3,7 @@
 This repository contains a robust, reproducible workflow for building a custom [Nextclade](https://github.com/nextstrain/nextclade) dataset for Enterovirus A71 (EV-A71). It enables you to generate reference and annotation files, download and process sequence data, infer an ancestral sequence, and create all files needed for Nextclade analyses and visualization.
 
 ---
+
 ## Quick Start
 
 ```bash
@@ -63,11 +64,13 @@ python3 scripts/generate_from_genbank.py --reference "AY426531.1" --output-dir d
 ```
 
 During the script execution, follow the prompts for CDS annotation selection.
-   - `[0]`
-   - `[product]` or `[leave empty for manual choice]` to select proteins.
-   - `[2]`.
+
+- `[0]`
+- `[product]` or `[leave empty for manual choice]` to select proteins.
+- `[2]`.
 
 **Outputs:**
+
 - `dataset/reference.fasta`
 - `dataset/genome_annotation.gff3`
 
@@ -76,8 +79,10 @@ During the script execution, follow the prompts for CDS annotation selection.
 ### 2. Configure `pathogen.json`
 
 Edit `pathogen.json` to:
+
 - Reference your generated files (`reference.fasta`, `genome_annotation.gff3`)
 - Update metadata and QC settings as needed  
+
 > [!WARNING]  
 > If QC is not set, Nextclade will skip quality checks.
 
@@ -90,6 +95,7 @@ See the [Nextclade pathogen config documentation](https://docs.nextstrain.org/pr
 Copy your GenBank file to `resources/reference.gb` and edit it to ensure compatibility with the workflow.
 
 **Important requirements:**
+
 - Each coding sequence (CDS) must have either a `product` or `gene` name present
 - The annotation keys must **match exactly** between `reference.gb` and `genome_annotation.gff3`
 - Use simple, consistent names (e.g., `product="VP1"` instead of `product="VP1_protein"`)
@@ -134,12 +140,14 @@ The `inferred-root/` directory contains a reproducible pipeline that uses **outg
 - **Fills gaps** with reference nucleotides to ensure a complete, biologically plausible genome
 
 This **Static Inferred Ancestor** serves as the root of your Nextclade dataset, providing:
+
 - More accurate mutation calls relative to a realistic EV-A71 ancestor
 - A stable reference that better represents EV-A71 diversity than the distant BrCr sequence
 
 #### Configuration
 
 The workflow has two key parameters in the main `Snakefile`:
+
 - `STATIC_ANCESTRAL_INFERRENCE = True` — enables using the inferred root (default: `True`)
 - `INFERRENCE_RERUN = False` — controls whether to regenerate the inferred root (default: `False`)
 
@@ -157,9 +165,11 @@ When you need to regenerate with new data or updated outgroups:
 
 1. Set `INFERRENCE_RERUN = True` in the Snakefile
 2. Run the workflow:
+
    ```bash
    snakemake --cores 9 all --config static_inference_confirmed=true
    ```
+
 3. The workflow will:
    - Clean previous results in `inferred-root/results/`
    - Run the full inference pipeline with your current sequences
@@ -178,6 +188,35 @@ When you need to regenerate with new data or updated outgroups:
 **See:** [`inferred-root/README.md`](inferred-root/README.md) for technical details and the complete workflow.
 
 ---
+
+## Star-like root
+
+The reference tree for the Nextclade dataset is not a plain phylogeny. Before it reaches `augur refine`, it is deliberately restructured into a **star-like tree** by [scripts/star_like_rooter.py](scripts/star_like_rooter.py).
+
+**Why.** Recombinant clades — and any strain flagged as a known recombinant — have no single meaningful position in a bifurcating tree: their genomes are mosaics of multiple parents, so their placement is ambiguous and can distort branch lengths and topology for the rest of the tree. Each recombinant clade is therefore cut out and reattached directly to the root, radiating from it like a star. The non-recombinant backbone, including reference and outgroup strains, keeps its original structure and position.
+
+**How it works.** On each run:
+
+1. **Label the tips.** Every accession in `resources/clades_metadata.tsv` is labeled with its clade (e.g. `C4`). Strains listed in the [recombinants file](resources/recombinants.tsv) are labeled `RFs`; tips with no clade recorded at all are labeled `unassigned`.
+2. **Find the reattachment points.** The tree is traversed bottom-up. For every recombinant-classified tip (`RFs`, plus any clade passed to `--recombinant_clades`), the script climbs to the *highest* ancestor whose descendants are all recombinant-classified. This merges adjacent and nested recombinant clades into a single reattachment point rather than scattering many small ones.
+3. **Reattach.** Each top-level recombinant ancestor is detached from its parent — pruning any parent left childless — and reattached as a direct child of the root, with its original root-to-node distance preserved as the new branch length.
+4. **Log the result**, e.g.:
+
+```text
+   Star-like restructuring: 6 recombinant clades reattached to root, 224 strains moved, backbone preserved
+```
+
+> [!WARNING]
+> **An unexpectedly high number of reattached clades or strains is usually a metadata problem, not a recombination-heavy dataset.** It most often means the tree's tips and `resources/clades_metadata.tsv` have fallen out of sync — for example, the tree was rebuilt from a different or newly subsampled strain set, but the clade metadata was not regenerated. Tips with no matching row default to `unassigned` (non-recombinant), which can silently **fragment a recombinant clade** into several pieces that are each reattached separately instead of merged into one.
+>
+> The script logs how many tips fell into this state:
+>
+> ```text
+> N/M (x.x%) tree tips have NO row in --input_clades and will be treated as non-recombinant 'unassigned' strains...
+> Missing accessions (up to 10 shown): [...]
+> ```
+>
+> Whenever the reattachment count looks high, **check the log for this warning first**, look up the accessions it lists, and add the missing rows to `resources/clades_metadata.tsv` with correct clade assignments before trusting the resulting star tree.
 
 ### Template for Other Enteroviruses
 
