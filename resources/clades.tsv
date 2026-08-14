@@ -25,9 +25,9 @@ B1	nuc	1505	A
 B1	nuc	3392	T
 B1	nuc	7283	A
 
-C	nuc	1892	G
-C	nuc	2428	G
-C	nuc	3191	T
+C	nuc	3764	T
+C	nuc	4730	G
+C	nuc	5905	C
 
 C2	nuc	2972	A
 C2	nuc	4061	G
@@ -76,9 +76,9 @@ A	nuc	1259	T
 A	nuc	2702	C
 A	nuc	5678	G
 
-E	nuc	992	C
+E	nuc	4856	C
 E	nuc	2120	T
-E	nuc	3230	A
+E	nuc	6365	G
 
 G	nuc	2735	G
 G	nuc	3008	A
@@ -87,4 +87,3 @@ G	nuc	4112	A
 D	nuc	2171	C
 D	nuc	3143	C
 D	nuc	4022	G
-

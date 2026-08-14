@@ -1,6 +1,6 @@
 {
   "title": "Enterovirus A71 - Nextclade dataset tree",
-  "build_url": "https://github.com/enterovirus-phylo/nextclade_a16",
+  "build_url": "https://github.com/enterovirus-phylo/nextclade_a71",
   "maintainers": [
     {
       "name": "Nadia Neuner-Jehle",
@@ -42,7 +42,7 @@
             ]
           },
           {
-            "name": "Inferred root",
+            "name": "root",
             "displayName": "Tree root",
             "description": "Inferred ancestral root (regenerated on each run)",
             "criteria": [
@@ -84,11 +84,6 @@
       "title": "Epitope at BC loop [97-105]",
       "type": "categorical",
       "key": "BC"
-    },
-    {
-      "key": "GH",
-      "title": "Epitope at GH loop [208-222]",
-      "type": "categorical"
     },
     {
       "key": "EF",

@@ -3,7 +3,7 @@ REFERENCE_ACCESSION =   "U22521"
 TAXON_ID =              39054
 GENES =                 ["VP4", "VP2", "VP3", "VP1", "2A", "2B", "2C", "3A", "3B", "3C", "3D"]
 ALLOWED_DIVERGENCE =    "2000" # was 
-MIN_DATE =              "1960-01-01"
+MIN_DATE =              "1970-01-01"
 MIN_LENGTH =            "6400" # was 6000 for whole genome build on Nextstrain
 MAX_SEQS =              "1200" # tree will be subsampled
 ROOTING =               "ancestral_sequence"  # mid_point, outgroup, reference, ancestral sequence
@@ -198,19 +198,31 @@ if STATIC_ANCESTRAL_INFERRENCE and not INFERRENCE_RERUN:
             seq = INFERRED_SEQ_PATH,
             meta = INFERRED_META_PATH,
         params:
-            strain_id_field="accession",
+            strain_id_field = "accession",
         shell:
             """
             echo "Combining sequences with ancestral root..."
             cat {input.seq} {input.inref} > {output.seq}
 
+            csvtk mutate2 -t \
+                -n url \
+                -e '"https://www.ncbi.nlm.nih.gov/nuccore/" + ${params.strain_id_field}' \
+                {input.meta} > meta.tmp
+
+            csvtk mutate2 -t \
+                -n url \
+                -e '"https://github.com/enterovirus-phylo/nextclade_a71/blob/master/resources/inferred-root.fasta"' \
+                {input.meta_ancestral} > ancestral.tmp
+            
             echo "Merging metadata..."
             augur merge \
-                --metadata metadata={input.meta} ancestral={input.meta_ancestral} rivm={input.RIVM} \
+                --metadata metadata=meta.tmp ancestral=ancestral.tmp rivm={input.RIVM} \
                 --metadata-id-columns {params.strain_id_field} \
                 --output-metadata {output.meta}
 
             echo "Static ancestral sequence imported successfully!"
+
+            rm meta.tmp ancestral.tmp
             """
 
 rule index_sequences:
@@ -248,6 +260,8 @@ rule filter:
         max_seqs=MAX_SEQS,
         categories = "country year", #TODO: add subsampling per category?
         strain_id_field = ID_FIELD,
+    log:
+        "logs/filter.log"
     shell:
         """
         augur filter \
@@ -261,7 +275,8 @@ rule filter:
             --group-by {params.categories} \
             --subsample-max-sequences {params.max_seqs} \
             --output-sequences {output.filtered_sequences} \
-            --output-metadata {output.filtered_metadata}
+            --output-metadata {output.filtered_metadata} \
+            >> {log} 2>&1
         """
         
 rule align:
@@ -363,6 +378,8 @@ rule exclude:
         filtered_sequences = "results/filtered_aligned.fasta",
         filtered_metadata = "results/filtered_metadata.tsv",
         strains = "results/tree_strains.txt",
+    log:
+        "logs/exclude.log"
     shell:
         """
         augur filter \
@@ -372,15 +389,9 @@ rule exclude:
             --metadata-id-columns {params.strain_id_field} \
             --exclude {input.exclude} {input.outliers} {input.example} \
             --output-sequences {output.filtered_sequences} \
-            --output-metadata tmp.o \
-            --output-strains {output.strains}
-
-        csvtk mutate2 -t \
-          -n url \
-          -e '"https://www.ncbi.nlm.nih.gov/nuccore/" + ${params.strain_id_field:q}' \
-          tmp.o > {output.filtered_metadata:q}
-          
-        rm tmp.o   
+            --output-metadata {output.filtered_metadata} \
+            --output-strains {output.strains} \
+            >> {log} 2>&1 
         """
 
 rule tree:
@@ -455,7 +466,7 @@ if STAR_ROOT==True:
             augur refine \
             --tree {output.tree} \
             --alignment {input.alignment} \
-            --root {ROOTING} \
+            --root {params.root_name} \
             --keep-polytomies \
             --divergence-unit mutations-per-site \
             --output-node-data {output.node_data} \
@@ -654,7 +665,7 @@ rule epitopes:
         epitopes = {
         'BC':     list(range(97, 106)),         # Lyu et al. 2015 (JVI); Crystal structures (PDB:3VBS)
         'EF':     list(range(163, 178)),        # Foo et al. 2007; Lyu et al. 2015; Known as SP55 epitope
-        'GH':     list(range(208, 223)),        # Foo et al. 2007; Lyu et al. 2015; Known as SP70 epitope; 100% conserved   
+        # 'GH':     list(range(208, 223)),        # Foo et al. 2007; Lyu et al. 2015; Known as SP70 epitope; 100% conserved   
         'Esc_CHN':[283, 293],                   # Escape Mutations in C-Terminal in Chinese Samples
         'CTERM':  list(range(240, 266))},       # Both ranges appear in Lyu et al. (2015) and JVI crystal structure papers
         min_count = 3 # number of sequences?
@@ -785,7 +796,7 @@ rule subsample_example_sequences:
             --metadata metadata.tmp \
             --metadata-id-columns {params.strain_id_field} \
             --min-date 2010 --group-by clade \
-            --subsample-max-sequences 20  \
+            --subsample-max-sequences 25  \
             --min-length 4000 \
             --include {input.incl_examples} \
             --exclude {input.exclude} {input.outliers} \

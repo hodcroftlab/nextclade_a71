@@ -25,7 +25,7 @@
     "minMatchLength": 30,
     "allowedMismatches": 15,
     "minLength": 100,
-    "minSeedCover": 0.82,
+    "minSeedCover": 0.79,
     "retryReverseComplement": true,
     "gapAlignmentSide": "left"
   },
