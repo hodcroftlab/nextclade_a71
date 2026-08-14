@@ -8,7 +8,7 @@ MIN_LENGTH =            "6400" # was 6000 for whole genome build on Nextstrain
 MAX_SEQS =              "1200" # tree will be subsampled
 ROOTING =               "ancestral_sequence"  # mid_point, outgroup, reference, ancestral sequence
 ID_FIELD=               "accession" # either accession or strain, used for meta-id-column in augur
-RECOMBINANT_CLADES =    ["C2.2","C2.3", "C1.2","C1.3","D","E", "F","G", "A", "C6"]  # clades treated as recombinant forms (RFs)
+RECOMBINANT_CLADES =    ["C2.2","C2.3", "C1.2","C1.3","C6"]  # clades treated as recombinant forms (RFs)
 
 # Set the paths
 SEQUENCES =             "data/sequences.fasta"

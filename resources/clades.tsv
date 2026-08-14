@@ -12,13 +12,14 @@ B4	nuc	2930	G
 B4	nuc	6214	G
 B4	nuc	6284	C
 
-B3	nuc	2768	T
-B3	nuc	3296	G
-B3	nuc	6968	G
+B3	nuc	3770	A
+B3	nuc	4532	A
+B3	nuc	5954	C
 
-B	nuc	1316	G
-B	nuc	2123	T
-B	nuc	3815	G
+B	nuc	968	T
+B	nuc	1739	A
+B	nuc	2300	C
+B	nuc	3134	T
 
 B1	nuc	1505	A
 B1	nuc	3392	T
@@ -87,6 +88,3 @@ D	nuc	2171	C
 D	nuc	3143	C
 D	nuc	4022	G
 
-RFs	nuc	3875	A
-RFs	nuc	4865	G
-RFs	nuc	5489	T
