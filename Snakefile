@@ -1,3 +1,5 @@
+from pathlib import Path
+
 # Set the parameters
 REFERENCE_ACCESSION =   "U22521"
 TAXON_ID =              39054
@@ -86,6 +88,12 @@ if FETCH_SEQUENCES == True:
             snakemake --cores {threads} all
             cd ../
             """
+
+if Path(EXTRA_META).exists():
+    print("Extra metadata file found, will be merged with the main metadata.")
+else:
+    print("Extra metadata file not found, creating an empty table.")
+    Path(EXTRA_META).write_text(f"{ID_FIELD}\tmeta\n\t\n")
 
 rule curate:
     message:
