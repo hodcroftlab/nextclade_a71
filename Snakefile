@@ -116,7 +116,10 @@ rule curate:
         augur merge --metadata metadata={input.meta} public={input.public} genbank={input.genbank} \
             --metadata-id-columns {params.strain_id_field} \
             --output-metadata metadata.tmp
-        
+
+        tsv-filter -H --not-empty {params.strain_id_field} metadata.tmp > metadata.filtered.tmp
+        mv metadata.filtered.tmp metadata.tmp
+
         augur curate normalize-strings \
             --metadata metadata.tmp \
             --id-column {params.strain_id_field} \
